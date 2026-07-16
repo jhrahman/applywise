@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { Trash2, Upload, Loader2, CheckCircle2 } from "lucide-react";
+import { Trash2, Upload, Loader2, CheckCircle2, Download, Puzzle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -8,6 +8,7 @@ import { Select } from "@/components/ui/select";
 import { AnimatedCheckmark } from "@/components/ui/animated-checkmark";
 import { extractTextFromPdf } from "@/lib/pdf";
 import { getItem, setItem, STORAGE_KEYS } from "@/lib/storage";
+import { isExtensionAvailable } from "@/lib/bridge";
 import type { AiProvider, ProviderSettings, Resume } from "@/types";
 
 const MAX_RESUMES = 3;
@@ -80,7 +81,12 @@ export function Setup() {
   const [saved, setSaved] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [loaded, setLoaded] = useState(false);
+  const [extensionInstalled, setExtensionInstalled] = useState<boolean | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    isExtensionAvailable().then(setExtensionInstalled);
+  }, []);
 
   useEffect(() => {
     Promise.all([
@@ -175,6 +181,8 @@ export function Setup() {
           Everything below stays in your browser — nothing is uploaded to a server.
         </p>
       </div>
+
+      {extensionInstalled === false && <InstallExtensionCard />}
 
       <Card>
         <CardHeader>
@@ -318,6 +326,61 @@ export function Setup() {
         </CardContent>
       </Card>
     </div>
+  );
+}
+
+const INSTALL_STEPS = [
+  "Unzip the downloaded file.",
+  'Open your browser\'s extensions page (chrome://extensions, edge://extensions, or brave://extensions) and enable "Developer mode".',
+  'Click "Load unpacked" and select the unzipped "applywise-extension" folder.',
+];
+
+// A webpage can't silently install a browser extension — that's blocked by
+// every major browser for security reasons. Downloading a pre-built, always
+// up-to-date zip plus three short steps is the closest thing to one-click
+// until this ships on the Chrome Web Store / Firefox Add-ons.
+function InstallExtensionCard() {
+  return (
+    <Card
+      className="border-accent-1/40"
+      style={{ backgroundColor: "var(--status-good-bg)" }}
+    >
+      <CardHeader>
+        <div className="flex items-start gap-3">
+          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-accent-1/15 text-accent-1">
+            <Puzzle size={18} />
+          </div>
+          <div>
+            <CardTitle>Install the browser extension</CardTitle>
+            <CardDescription>
+              Analyze job postings straight from LinkedIn, bdjobs, and other sites in one click.
+              Not detected in this browser yet — grab the latest build below.
+            </CardDescription>
+          </div>
+        </div>
+      </CardHeader>
+      <CardContent className="flex flex-col gap-4">
+        <a href="/applywise-extension.zip" download className="w-fit">
+          <Button>
+            <Download size={16} />
+            Download extension (.zip)
+          </Button>
+        </a>
+        <ol className="flex flex-col gap-1.5 text-sm text-[var(--fg-dim)]">
+          {INSTALL_STEPS.map((step, i) => (
+            <li key={step} className="flex gap-2">
+              <span className="font-semibold text-accent-1">{i + 1}.</span>
+              <span>{step}</span>
+            </li>
+          ))}
+        </ol>
+        <p className="text-xs text-[var(--fg-dim)]">
+          Using Firefox? Open <code>about:debugging#/runtime/this-firefox</code> instead, click{" "}
+          <strong>Load Temporary Add-on</strong>, and select{" "}
+          <code>manifest.json</code> inside the unzipped folder.
+        </p>
+      </CardContent>
+    </Card>
   );
 }
 

@@ -1,2 +1,2 @@
-// Where the results page lives. Swap to the production Vercel URL at deploy time.
-export const APP_URL = "http://localhost:5173";
+// Where the results page lives.
+export const APP_URL = "https://applywise-copilot.vercel.app";

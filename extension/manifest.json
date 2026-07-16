@@ -29,7 +29,11 @@
       "run_at": "document_idle"
     },
     {
-      "matches": ["http://localhost:5173/*", "http://localhost:5174/*"],
+      "matches": [
+        "http://localhost:5173/*",
+        "http://localhost:5174/*",
+        "https://applywise-copilot.vercel.app/*"
+      ],
       "js": ["app-bridge.js"],
       "run_at": "document_start"
     }

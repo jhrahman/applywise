@@ -12,6 +12,10 @@ dist
 dist-ssr
 *.local
 
+# Generated at build time by scripts/package-extension.mjs — always rebuilt
+# fresh, never hand-edited.
+public/applywise-extension.zip
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json
