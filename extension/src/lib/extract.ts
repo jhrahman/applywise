@@ -237,12 +237,32 @@ function findByHeadingText(): Element | null {
   return null;
 }
 
+/**
+ * Largest element matching `selector` whose text stays under the sweep cap.
+ * A LinkedIn job page can have several elements sharing the description
+ * testid (a company blurb, a truncated preview, the real body) — the real
+ * job description is the biggest of them, so pick that rather than whichever
+ * document order happens to return first. The cap still guards against a
+ * selector that accidentally matches a whole job-list wrapper.
+ */
+function largestMatch(selector: string): Element | null {
+  let best: Element | null = null;
+  let bestLen = 0;
+  for (const el of document.querySelectorAll(selector)) {
+    const len = textFrom(el).length;
+    if (len <= WIDEN_CAP_CHARS && len > bestLen) {
+      best = el;
+      bestLen = len;
+    }
+  }
+  return best;
+}
+
 /** Falls back to page text extraction when no JSON-LD is present. */
 function extractHeuristic(): JobPosting | null {
   for (const selector of PRECISE_DESCRIPTION_SELECTORS) {
-    const el = document.querySelector(selector);
-    if (!el) continue;
-    if (textFrom(el).length > 200) return buildResult(richTextFrom(widenElement(el)));
+    const el = largestMatch(selector);
+    if (el && textFrom(el).length > 200) return buildResult(richTextFrom(widenElement(el)));
   }
 
   const byHeading = findByHeadingText();
@@ -407,9 +427,30 @@ function applyLinkedInMeta(job: JobPosting): JobPosting {
   return { ...job, company, location, description };
 }
 
+/**
+ * Take the richer description of the two sources, but keep whichever source
+ * has real metadata. LinkedIn's JSON-LD (when present at all) is sometimes a
+ * thin summary while the DOM has the full "About the job" body; other boards
+ * have clean JSON-LD but a messy DOM. Picking the longer description and
+ * preferring non-placeholder company/location/title gets the best of both.
+ */
+function mergeExtractions(jsonLd: JobPosting | null, heuristic: JobPosting | null): JobPosting | null {
+  if (!jsonLd) return heuristic;
+  if (!heuristic) return jsonLd;
+  const richer = heuristic.description.length > jsonLd.description.length ? heuristic : jsonLd;
+  const realCompany = jsonLd.company && jsonLd.company !== "Unknown company" ? jsonLd.company : null;
+  const realTitle = jsonLd.title && jsonLd.title !== "Untitled role" ? jsonLd.title : null;
+  return {
+    ...richer,
+    title: realTitle ?? richer.title,
+    company: realCompany ?? richer.company,
+    location: jsonLd.location ?? richer.location,
+  };
+}
+
 export function extractJobPosting(): JobPosting | null {
   const skillChips = extractSkillChips();
-  let base = extractFromJsonLd() ?? extractHeuristic();
+  let base = mergeExtractions(extractFromJsonLd(), extractHeuristic());
   if (!base) return null;
 
   base = { ...base, description: appendSkillsLine(base.description, skillChips) };

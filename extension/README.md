@@ -55,6 +55,37 @@ stale won't know it. Web-app-only changes (`src/` at the repo root) don't
 need a bump; they take effect the moment Vercel redeploys, no extension
 action required.
 
+## Job posting extraction (esp. LinkedIn)
+
+`src/lib/extract.ts` pulls the job title, company, location, and full
+description out of the page. The parts that matter for reliability:
+
+- **Structure-preserving text** (`richTextFrom`). Plain `element.textContent`
+  collapses `<br>` / `<li>` / `<p>` boundaries into one run-on line, so
+  "Salary Range" and "BDT 80,000…" or "Location:" and its value blur
+  together and the AI can't tell labels from values. `richTextFrom` turns
+  block boundaries into newlines so each label:value pair is its own line.
+  This applies to both the DOM path and the JSON-LD path (`stripHtml`).
+- **Largest match, not first match** (`largestMatch`). A LinkedIn page can
+  have several elements sharing the description testid (a company blurb, a
+  preview, the real body); the real one is the biggest, so we pick that
+  rather than whichever comes first in document order. A sweep cap keeps it
+  from grabbing a whole job-list wrapper.
+- **Richer of two sources** (`mergeExtractions`). JSON-LD and the DOM
+  heuristic both run; we take the longer description but keep whichever
+  source has real (non-placeholder) company/title/location.
+- **Re-extraction at click time**, not detect time (`content-script.ts`'s
+  `captureFreshJob`). This is the big one: LinkedIn is an SPA that renders /
+  swaps the job body *after* the floating button mounts, so the snapshot
+  taken in `detectAndMount` was often a half-loaded page or a list preview —
+  the cause of analyses that saw "only navigation/boilerplate" text. On
+  click we re-read the DOM and poll briefly (up to ~1.5s) for a substantial
+  description before sending, keeping the richest read.
+- **Class-name-independent by design.** LinkedIn ships hashed CSS classes
+  (e.g. `_206505cb`) that churn every deploy, so nothing matches on them —
+  extraction keys off `data-testid`, the "About the job" heading text, and
+  structural signals (block boundaries, a real company-page link) instead.
+
 ## Live progress during analysis
 
 The floating "Analyze" button doesn't just say "Analyzing…" for the whole

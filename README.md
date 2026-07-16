@@ -164,15 +164,24 @@ tested as part of this project — treat it as a starting point.
   formula) rather than a freeform "impression" score, so re-analyzing the
   same resume against the same posting lands close to the same score instead
   of swinging wildly between runs.
+- **Robust job posting extraction** — the title, company, location, and full
+  description are read from the page with several safeguards: text structure
+  (`<br>`/`<li>`/`<p>` boundaries) is preserved so labels stay attached to
+  their values, the *largest* real description block is chosen (not whichever
+  markup comes first), JSON-LD and DOM sources are merged for the richest
+  result, and — importantly for single-page-app boards like LinkedIn — the
+  posting is re-read at the moment you click Analyze (not when the button
+  first appears), so a half-loaded page or list preview never gets analyzed
+  by mistake. Nothing keys off hashed CSS class names, which churn every
+  deploy.
 - **Job details extraction** — employment type, work mode (remote/hybrid/
   onsite), location, company, and salary, read directly from the posting.
   Works across languages (a posting in Japanese or Bengali still gets a
   readable English location), across boards with non-standard markup (skill
-  chip widgets, LinkedIn's structural page layout, overview boxes rendered
-  outside the main description), and picks the AI's reading over placeholder
-  text like "Unknown company" when the page's structured data is missing.
-  Anything the posting genuinely doesn't state shows as "Not available"
-  rather than being guessed.
+  chip widgets, overview boxes rendered outside the main description), and
+  picks the AI's reading over placeholder text like "Unknown company" when
+  the page's structured data is missing. Anything the posting genuinely
+  doesn't state shows as "Not available" rather than being guessed.
 - **Live currency conversion** — non-BDT salaries are converted to BDT using
   live exchange rates, shown alongside the original figure with the correct
   per-year/per-month/per-hour period; skipped entirely when a salary has no
@@ -372,3 +381,10 @@ browser, never on the server.
   `applywise-extension` folder itself, not its parent.
 - **Setup page doesn't detect the extension after installing it**: refresh
   the tab — the install-detection check runs once when the page loads.
+- **Analysis says the description is missing / "only LinkedIn boilerplate"
+  even though the job clearly has one**: make sure you're on the job's own
+  page with its "About the job" section visible, then click Analyze — the
+  extension re-reads the posting on click and waits briefly for it to load,
+  but it can only read what's actually rendered. If it persists on a specific
+  posting, that page's markup may be unusual; the strongest model
+  (`gemini-3-flash-preview`) also tends to handle sparse pages best.

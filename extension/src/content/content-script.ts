@@ -126,6 +126,14 @@ const STYLE = `
 const CONTEXT_INVALIDATED_MESSAGE =
   "Applywise was updated or reloaded since this page opened. Refresh the page and try again.";
 
+// A real job description is long-form; anything shorter is probably a
+// half-loaded page or a list preview, not the actual posting body.
+const MIN_DESCRIPTION_CHARS = 300;
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 function isExtensionContextValid(): boolean {
   return typeof browserApi !== "undefined" && !!browserApi.runtime?.id;
 }
@@ -226,12 +234,40 @@ class ApplywiseWidget {
     this.setFabText(text, true);
   }
 
+  /**
+   * Re-read the posting at click time, not detect time. LinkedIn and other
+   * SPAs frequently render or swap the job body *after* the button first
+   * mounts, so the snapshot taken in detectAndMount can be a half-loaded page
+   * or a list preview — which is why analyses sometimes saw "only navigation"
+   * text. Poll briefly for a substantial description before settling, then
+   * keep whatever is richest.
+   */
+  private async captureFreshJob() {
+    let job = extractJobPosting();
+    for (let i = 0; i < 5 && (!job || job.description.length < MIN_DESCRIPTION_CHARS); i++) {
+      await sleep(300);
+      const next = extractJobPosting();
+      // Keep the longer of what we've seen — never downgrade to a thinner
+      // read if a later poll happens to catch a transient state.
+      if (next && (!job || next.description.length > job.description.length)) job = next;
+    }
+    if (job) this.job = job;
+  }
+
   private async onFabClick() {
-    if (!this.fab || !this.job) return;
+    if (!this.fab) return;
     this.fab.disabled = true;
-    this.setFabText("Loading…", true);
+    this.setFabText("Reading the job posting…", true);
 
     try {
+      await this.captureFreshJob();
+      if (!this.job) {
+        this.showMessage(
+          "Couldn't read this job posting. Open the job's own page (not a search list or preview) so its description is visible, then try again."
+        );
+        return;
+      }
+
       const { resumes, hasApiKey } = await sendMessage<GetResumesResponse>({ type: "GET_RESUMES" });
 
       if (resumes.length === 0) {
