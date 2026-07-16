@@ -133,12 +133,6 @@ function describeAttempt(info: GeminiAttemptInfo): string {
   return `Analyzing with ${info.model}…`;
 }
 
-/** Persists the model actually used if the fallback switched away from the configured one. */
-async function persistModelSwitch(settings: ProviderSettings, modelUsed: string): Promise<void> {
-  if (modelUsed === settings.model) return;
-  await setItem(STORAGE_KEYS.providerSettings, { ...settings, model: modelUsed });
-}
-
 function describeAiError(err: unknown): string {
   return err instanceof AiRequestError
     ? err.message
@@ -181,8 +175,11 @@ async function handleAnalyze(
       (info) => sendProgress(tabId, describeAttempt(info))
     );
     analysis = result.result;
+    // Record which model actually produced this analysis for the results
+    // badge, but do NOT write it back to settings — the user's configured
+    // model (a strong one by default) must stay the starting point every
+    // time, so good models always lead and lite stays a last resort.
     modelUsed = result.modelUsed;
-    await persistModelSwitch(settings, modelUsed);
   } catch (err) {
     return { ok: false, error: describeAiError(err) };
   }
@@ -233,11 +230,10 @@ async function handleGenerateInterviewQuestions(
 
   let interviewQuestions;
   try {
-    const { result, modelUsed } = await withGeminiFallback(settings, (s) =>
+    const { result } = await withGeminiFallback(settings, (s) =>
       getAiClient(s).generateInterviewQuestions(resume.parsedText, entry.job)
     );
     interviewQuestions = result;
-    await persistModelSwitch(settings, modelUsed);
   } catch (err) {
     return { ok: false, error: describeAiError(err) };
   }

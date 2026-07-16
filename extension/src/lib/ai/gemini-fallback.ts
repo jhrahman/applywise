@@ -24,11 +24,12 @@ export function isLiteGeminiModel(model: string): boolean {
   return GEMINI_LITE_MODELS.includes(model);
 }
 
-// How many times to retry each full-reasoning model before moving to the
-// next one — a "busy"/high-demand error is often transient, so it's worth
-// knocking on the same door twice before giving up on it.
-export const RETRIES_PER_PREFERRED_MODEL = 2;
-export const RETRY_BACKOFF_MS = 1500;
+// Try each model once, then move straight to the next one. There are several
+// strong models in the list, so on a "busy" error it's faster to hop to the
+// next good model immediately than to sit and re-poke the same busy one —
+// which was adding noticeable dead time to every analysis for little gain.
+export const RETRIES_PER_PREFERRED_MODEL = 1;
+export const RETRY_BACKOFF_MS = 0;
 
 /**
  * Only errors that plausibly go away by trying a different model are worth

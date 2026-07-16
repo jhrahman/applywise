@@ -3,7 +3,7 @@ import type { JobPosting } from "./types";
 function stripHtml(html: string): string {
   const div = document.createElement("div");
   div.innerHTML = html;
-  return (div.textContent || "").replace(/\s+/g, " ").trim();
+  return richTextFrom(div);
 }
 
 function textOf(value: unknown): string {
@@ -128,8 +128,57 @@ const GENERIC_DESCRIPTION_SELECTORS = ['[class*="job-details"]', "article"];
 // AI provider's per-minute token quota in a single request.
 const MAX_DESCRIPTION_CHARS = 8000;
 
+// Flattened text — everything on one line. Fine for size comparisons (which
+// container is biggest) but NOT for the text the AI actually reads.
 function textFrom(el: Element): string {
   return (el.textContent || "").replace(/\s+/g, " ").trim();
+}
+
+// Block-level tags whose boundaries should become line breaks, so labels stay
+// attached to their values instead of running together.
+const BLOCK_TAGS = new Set([
+  "P", "DIV", "SECTION", "ARTICLE", "HEADER", "FOOTER", "MAIN",
+  "UL", "OL", "LI", "TABLE", "TR", "H1", "H2", "H3", "H4", "H5", "H6",
+]);
+
+/**
+ * Like textFrom, but preserves line structure. Plain textContent collapses a
+ * posting like "Salary Range<br>BDT 80,000 - 120,000 (Monthly)" or
+ * "<li>Location: Dhaka, Bangladesh</li>" into one run-on line, which makes it
+ * genuinely hard for the AI to tell which value belongs to which label —
+ * exactly why salary / work mode / location kept coming back "Not available"
+ * even when they were plainly in the posting. Turning <br> and block
+ * boundaries into newlines means each label:value pair arrives as its own
+ * clean line. This is what the AI receives as the job description.
+ */
+function richTextFrom(el: Element): string {
+  let out = "";
+  const walk = (node: Node) => {
+    for (const child of Array.from(node.childNodes)) {
+      if (child.nodeType === Node.TEXT_NODE) {
+        // Source whitespace (indentation, wrapped lines) is noise — collapse
+        // it; the real breaks come from the block/<br> handling below.
+        out += (child.textContent || "").replace(/[ \t\r\n\f]+/g, " ");
+      } else if (child.nodeType === Node.ELEMENT_NODE) {
+        const tag = (child as Element).tagName;
+        if (tag === "BR" || tag === "HR") {
+          out += "\n";
+          continue;
+        }
+        const block = BLOCK_TAGS.has(tag);
+        if (block) out += "\n";
+        walk(child);
+        if (block) out += "\n";
+      }
+    }
+  };
+  walk(el);
+  return out
+    .split("\n")
+    .map((line) => line.replace(/[ \t]+/g, " ").trim())
+    .join("\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
 }
 
 // Cap for widening: a real single job description (plus a small overview
@@ -144,18 +193,27 @@ const WIDEN_CAP_CHARS = 20_000;
  * info entirely, even though it's sitting right next to it. Climb a few
  * ancestor levels and keep the largest one that still stays under the sweep
  * cap, so a nearby overview box gets pulled in without risking a full
- * sidebar/job-list sweep.
+ * sidebar/job-list sweep. Returns the chosen element; rich text is produced
+ * from it at the end so structure is preserved.
  */
-function widenText(el: Element, text: string): string {
-  let node: Element = el;
-  let best = text;
-  for (let i = 0; i < 4 && node.parentElement; i++) {
-    node = node.parentElement;
-    const parentText = textFrom(node);
-    if (parentText.length <= WIDEN_CAP_CHARS && parentText.length > best.length) {
-      best = parentText;
-    } else if (parentText.length > WIDEN_CAP_CHARS) {
-      break;
+// Never widen up into page-level wrappers — a job "overview box" is always a
+// content container, never <main>/<body>/<html>. Climbing into those would
+// let a small page (or one without much chrome) sweep in the whole document,
+// including the tab title and site header.
+const WIDEN_STOP_TAGS = new Set(["MAIN", "BODY", "HTML", "HEAD"]);
+
+function widenElement(el: Element): Element {
+  let cur: Element = el;
+  let best = el;
+  let bestLen = textFrom(el).length;
+  for (let i = 0; i < 4 && cur.parentElement; i++) {
+    cur = cur.parentElement;
+    if (WIDEN_STOP_TAGS.has(cur.tagName)) break;
+    const len = textFrom(cur).length;
+    if (len > WIDEN_CAP_CHARS) break;
+    if (len > bestLen) {
+      best = cur;
+      bestLen = len;
     }
   }
   return best;
@@ -166,14 +224,13 @@ function widenText(el: Element, text: string): string {
  * reading the next sibling with real content — works regardless of class
  * names, since it keys off visible heading text instead.
  */
-function findByHeadingText(): { el: Element; text: string } | null {
+function findByHeadingText(): Element | null {
   for (const heading of document.querySelectorAll("h1, h2, h3, h4")) {
     const headingText = textFrom(heading).toLowerCase();
     if (!DESCRIPTION_HEADING_TEXTS.includes(headingText)) continue;
     let sibling = heading.nextElementSibling;
     while (sibling) {
-      const text = textFrom(sibling);
-      if (text.length > 200) return { el: sibling, text };
+      if (textFrom(sibling).length > 200) return sibling;
       sibling = sibling.nextElementSibling;
     }
   }
@@ -185,37 +242,39 @@ function extractHeuristic(): JobPosting | null {
   for (const selector of PRECISE_DESCRIPTION_SELECTORS) {
     const el = document.querySelector(selector);
     if (!el) continue;
-    const text = textFrom(el);
-    if (text.length > 200) return buildResult(widenText(el, text));
+    if (textFrom(el).length > 200) return buildResult(richTextFrom(widenElement(el)));
   }
 
   const byHeading = findByHeadingText();
-  if (byHeading) return buildResult(widenText(byHeading.el, byHeading.text));
+  if (byHeading) return buildResult(richTextFrom(widenElement(byHeading)));
 
-  let best: { text: string; el: Element } | null = null;
+  let best: Element | null = null;
+  let bestLen = 0;
   for (const selector of GENERIC_DESCRIPTION_SELECTORS) {
     for (const el of document.querySelectorAll(selector)) {
-      const text = textFrom(el);
+      const len = textFrom(el).length;
       // Skip anything implausibly large — a real single job description
       // doesn't run past ~20k characters; past that it's almost certainly
       // a container that swept in surrounding page content too.
-      if (text.length > 200 && text.length < 20_000 && (!best || text.length > best.text.length)) {
-        best = { text, el };
+      if (len > 200 && len < 20_000 && len > bestLen) {
+        best = el;
+        bestLen = len;
       }
     }
   }
-  if (best) return buildResult(widenText(best.el, best.text));
+  if (best) return buildResult(richTextFrom(widenElement(best)));
 
   // Last resort: the largest small-ish <div>/<section>/<main> text block.
   for (const el of document.querySelectorAll("div, section, main")) {
     if (el.children.length > 20) continue; // skip obvious layout containers
-    const text = textFrom(el);
-    if (text.length > 300 && text.length < 20_000 && (!best || text.length > best.text.length)) {
-      best = { text, el };
+    const len = textFrom(el).length;
+    if (len > 300 && len < 20_000 && len > bestLen) {
+      best = el;
+      bestLen = len;
     }
   }
 
-  return best ? buildResult(widenText(best.el, best.text)) : null;
+  return best ? buildResult(richTextFrom(widenElement(best))) : null;
 }
 
 function buildResult(rawText: string): JobPosting {
