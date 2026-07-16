@@ -1,0 +1,199 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Applywise — theme preview</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --ash-1: #3a3d42;
+    --ash-2: #25272b;
+    --ash-3: #16171a;
+    --ash-text: #e7e5e0;
+    --ash-text-dim: #9a978f;
+    --accent-1: #5dcaa5;
+    --accent-2: #1d9e75;
+    --border-dark: #4a4d52;
+  }
+  [data-theme="light"] {
+    --ash-1: #f4f3f0;
+    --ash-2: #ffffff;
+    --ash-3: #ffffff;
+    --ash-text: #1c1e21;
+    --ash-text-dim: #6b6862;
+    --border-dark: #dedad2;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: 'Plus Jakarta Sans', sans-serif;
+    background: linear-gradient(160deg, var(--ash-1) 0%, var(--ash-2) 55%, var(--ash-3) 100%);
+    color: var(--ash-text);
+    min-height: 100vh;
+    transition: background 0.4s ease, color 0.4s ease;
+    padding: 0 0 60px;
+  }
+  header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 20px 32px;
+    border-bottom: 1px solid var(--border-dark);
+  }
+  .brand {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+  .brand span {
+    font-weight: 700;
+    font-size: 20px;
+    letter-spacing: -0.02em;
+  }
+  .toggle {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    background: rgba(255,255,255,0.05);
+    border: 1px solid var(--border-dark);
+    border-radius: 999px;
+    padding: 6px 14px;
+    cursor: pointer;
+    font-size: 13px;
+    color: var(--ash-text-dim);
+    font-weight: 500;
+  }
+  main {
+    max-width: 640px;
+    margin: 48px auto 0;
+    padding: 0 24px;
+  }
+  h1 {
+    font-size: 26px;
+    font-weight: 600;
+    margin: 0 0 8px;
+    letter-spacing: -0.02em;
+  }
+  p.sub {
+    color: var(--ash-text-dim);
+    margin: 0 0 32px;
+    font-size: 15px;
+  }
+  .card {
+    background: rgba(255,255,255,0.03);
+    border: 1px solid var(--border-dark);
+    border-radius: 16px;
+    padding: 24px;
+  }
+  [data-theme="light"] .card { background: #fbfaf8; }
+  .scan-row {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    font-size: 14px;
+    font-weight: 500;
+    margin-bottom: 18px;
+  }
+  .dot {
+    width: 8px; height: 8px; border-radius: 50%;
+    background: var(--accent-1);
+    animation: pulse 1.2s ease-in-out infinite;
+  }
+  @keyframes pulse {
+    0%, 100% { opacity: 0.3; transform: scale(0.85); }
+    50% { opacity: 1; transform: scale(1.1); }
+  }
+  .bar-track {
+    height: 6px;
+    border-radius: 999px;
+    background: rgba(255,255,255,0.08);
+    overflow: hidden;
+    margin-bottom: 20px;
+  }
+  [data-theme="light"] .bar-track { background: #ece9e4; }
+  .bar-fill {
+    height: 100%;
+    width: 40%;
+    border-radius: 999px;
+    background: linear-gradient(90deg, var(--accent-1), var(--accent-2));
+    animation: sweep 1.6s ease-in-out infinite;
+  }
+  @keyframes sweep {
+    0% { margin-left: -40%; }
+    100% { margin-left: 100%; }
+  }
+  .row {
+    display: flex;
+    justify-content: space-between;
+    padding: 10px 0;
+    border-top: 1px solid var(--border-dark);
+    font-size: 13px;
+    opacity: 0;
+    animation: reveal 0.5s ease forwards;
+  }
+  .row:nth-child(1) { animation-delay: 0.3s; }
+  .row:nth-child(2) { animation-delay: 0.6s; }
+  .row:nth-child(3) { animation-delay: 0.9s; }
+  @keyframes reveal {
+    from { opacity: 0; transform: translateY(4px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+  .label { color: var(--ash-text-dim); }
+</style>
+</head>
+<body data-theme="dark">
+
+<header>
+  <div class="brand">
+    <img src="applywise-logo.svg" alt="Applywise logo" width="34" height="34">
+    <span>Applywise</span>
+  </div>
+  <div class="toggle" onclick="toggleTheme()">
+    <span id="toggle-label">Dark ash</span>
+  </div>
+</header>
+
+<main>
+  <h1>Analyzing your match</h1>
+  <p class="sub">Applywise is comparing your resume against this posting.</p>
+
+  <div class="card">
+    <div class="scan-row">
+      <span class="dot"></span>
+      Scanning job description
+    </div>
+    <div class="bar-track"><div class="bar-fill"></div></div>
+
+    <div class="row" style="border-top:none; padding-top:0;">
+      <span class="label">Matching skills</span><span>Playwright, TypeScript, CI/CD</span>
+    </div>
+    <div class="row">
+      <span class="label">Missing skills</span><span>Cypress, Kubernetes</span>
+    </div>
+    <div class="row">
+      <span class="label">ATS score</span><span>82 / 100</span>
+    </div>
+  </div>
+</main>
+
+<script>
+function toggleTheme() {
+  const body = document.body;
+  const isDark = body.getAttribute('data-theme') === 'dark';
+  const next = isDark ? 'light' : 'dark';
+  body.setAttribute('data-theme', next);
+  document.getElementById('toggle-label').textContent = isDark ? 'Light' : 'Dark ash';
+  localStorage.setItem('applywise-theme', next);
+}
+window.addEventListener('DOMContentLoaded', () => {
+  const saved = localStorage.getItem('applywise-theme');
+  if (saved) {
+    document.body.setAttribute('data-theme', saved);
+    document.getElementById('toggle-label').textContent = saved === 'dark' ? 'Dark ash' : 'Light';
+  }
+});
+</script>
+</body>
+</html>

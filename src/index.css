@@ -1,0 +1,163 @@
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Plus Jakarta Sans", ui-sans-serif, system-ui, sans-serif;
+
+  --color-ash-1: #3a3d42;
+  --color-ash-2: #25272b;
+  --color-ash-3: #16171a;
+  --color-ash-text: #e7e5e0;
+  --color-ash-text-dim: #9a978f;
+  --color-accent-1: #f5a623;
+  --color-accent-2: #e8791a;
+  --color-border-dark: #4a4d52;
+
+  --color-light-1: #f4f3f0;
+  --color-light-2: #ffffff;
+  --color-light-text: #1c1e21;
+  --color-light-text-dim: #6b6862;
+  --color-border-light: #dedad2;
+}
+
+:root {
+  --bg-1: var(--color-ash-1);
+  --bg-2: var(--color-ash-2);
+  --bg-3: var(--color-ash-3);
+  --fg: var(--color-ash-text);
+  --fg-dim: var(--color-ash-text-dim);
+  --border: var(--color-border-dark);
+
+  /* Status tones — tuned per-theme so text stays WCAG-AA readable on its own
+     tinted background, not just "looks fine" on one theme by luck. */
+  --status-good-text: #6ee7b7;
+  --status-good-bg: rgba(52, 211, 153, 0.12);
+  --status-good-border: rgba(52, 211, 153, 0.35);
+
+  --status-bad-text: #fca5a5;
+  --status-bad-bg: rgba(248, 113, 113, 0.12);
+  --status-bad-border: rgba(248, 113, 113, 0.35);
+
+  --status-warn-text: #fcd34d;
+  --status-warn-bg: rgba(251, 191, 36, 0.12);
+  --status-warn-border: rgba(251, 191, 36, 0.35);
+}
+
+:root[data-theme="light"] {
+  --bg-1: var(--color-light-1);
+  --bg-2: var(--color-light-2);
+  --bg-3: var(--color-light-2);
+  --fg: var(--color-light-text);
+  --fg-dim: var(--color-light-text-dim);
+  --border: var(--color-border-light);
+
+  --status-good-text: #047857;
+  --status-good-bg: rgba(16, 185, 129, 0.1);
+  --status-good-border: rgba(16, 185, 129, 0.35);
+
+  --status-bad-text: #b91c1c;
+  --status-bad-bg: rgba(239, 68, 68, 0.1);
+  --status-bad-border: rgba(239, 68, 68, 0.3);
+
+  --status-warn-text: #92400e;
+  --status-warn-bg: rgba(245, 158, 11, 0.12);
+  --status-warn-border: rgba(245, 158, 11, 0.35);
+}
+
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme="dark"]) {
+    --bg-1: var(--color-light-1);
+    --bg-2: var(--color-light-2);
+    --bg-3: var(--color-light-2);
+    --fg: var(--color-light-text);
+    --fg-dim: var(--color-light-text-dim);
+    --border: var(--color-border-light);
+
+    --status-good-text: #047857;
+    --status-good-bg: rgba(16, 185, 129, 0.1);
+    --status-good-border: rgba(16, 185, 129, 0.35);
+
+    --status-bad-text: #b91c1c;
+    --status-bad-bg: rgba(239, 68, 68, 0.1);
+    --status-bad-border: rgba(239, 68, 68, 0.3);
+
+    --status-warn-text: #92400e;
+    --status-warn-bg: rgba(245, 158, 11, 0.12);
+    --status-warn-border: rgba(245, 158, 11, 0.35);
+  }
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: var(--font-sans);
+  background: linear-gradient(160deg, var(--bg-1) 0%, var(--bg-2) 55%, var(--bg-3) 100%);
+  color: var(--fg);
+  min-height: 100vh;
+  transition: background 0.4s ease, color 0.4s ease;
+}
+
+#root {
+  min-height: 100vh;
+}
+
+@keyframes pulse-dot {
+  0%,
+  100% {
+    opacity: 0.3;
+    transform: scale(0.85);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.1);
+  }
+}
+
+@keyframes sweep-bar {
+  0% {
+    margin-left: -40%;
+  }
+  100% {
+    margin-left: 100%;
+  }
+}
+
+@keyframes reveal-row {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes draw-circle {
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+
+@keyframes draw-check {
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+
+@keyframes check-pop {
+  0% {
+    opacity: 0;
+    transform: scale(0.85);
+  }
+  60% {
+    opacity: 1;
+    transform: scale(1.04);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}

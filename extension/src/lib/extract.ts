@@ -1,0 +1,360 @@
+import type { JobPosting } from "./types";
+
+function stripHtml(html: string): string {
+  const div = document.createElement("div");
+  div.innerHTML = html;
+  return (div.textContent || "").replace(/\s+/g, " ").trim();
+}
+
+function textOf(value: unknown): string {
+  if (typeof value === "string") return value;
+  if (value && typeof value === "object" && "name" in value) {
+    return String((value as { name: unknown }).name ?? "");
+  }
+  return "";
+}
+
+/**
+ * schema.org JobPosting.jobLocation is a Place (sometimes an array of them),
+ * whose real content is usually a nested PostalAddress rather than a plain
+ * "name" string — textOf() alone misses that shape entirely, which is the
+ * most common reason location silently comes back empty even when the
+ * posting has perfectly good structured data.
+ */
+function extractLocationText(value: unknown): string {
+  if (Array.isArray(value)) return extractLocationText(value[0]);
+  if (typeof value === "string") return value;
+  if (!value || typeof value !== "object") return "";
+
+  const place = value as Record<string, unknown>;
+  const direct = textOf(place);
+  if (direct) return direct;
+
+  const address = place.address;
+  if (typeof address === "string") return address;
+  if (address && typeof address === "object") {
+    const a = address as Record<string, unknown>;
+    const parts = [a.addressLocality, a.addressRegion, a.addressCountry]
+      .map((p) => (typeof p === "string" ? p.trim() : ""))
+      .filter(Boolean);
+    if (parts.length > 0) return parts.join(", ");
+  }
+  return "";
+}
+
+/** Walks a parsed JSON-LD payload (which may nest under @graph) looking for a JobPosting node. */
+function findJobPostingNode(data: unknown): Record<string, unknown> | null {
+  if (Array.isArray(data)) {
+    for (const item of data) {
+      const found = findJobPostingNode(item);
+      if (found) return found;
+    }
+    return null;
+  }
+  if (data && typeof data === "object") {
+    const obj = data as Record<string, unknown>;
+    const type = obj["@type"];
+    const isJobPosting =
+      type === "JobPosting" || (Array.isArray(type) && type.includes("JobPosting"));
+    if (isJobPosting) return obj;
+    if (obj["@graph"]) return findJobPostingNode(obj["@graph"]);
+  }
+  return null;
+}
+
+function extractFromJsonLd(): JobPosting | null {
+  const scripts = document.querySelectorAll('script[type="application/ld+json"]');
+  for (const script of scripts) {
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(script.textContent || "");
+    } catch {
+      continue;
+    }
+    const node = findJobPostingNode(parsed);
+    if (!node) continue;
+
+    const title = textOf(node.title) || document.title;
+    const company = textOf(node.hiringOrganization);
+    const location = extractLocationText(node.jobLocation) || undefined;
+    const rawDescription = textOf(node.description);
+    const description = rawDescription.includes("<") ? stripHtml(rawDescription) : rawDescription;
+
+    if (!description) continue;
+
+    return {
+      title: title || "Untitled role",
+      company: company || "Unknown company",
+      location,
+      description,
+      url: window.location.href,
+    };
+  }
+  return null;
+}
+
+// High-confidence selectors for boards that don't publish JSON-LD but use
+// a stable, purpose-built container for the description — checked first,
+// and the first match wins (no "largest wins" here, since on a page with a
+// job list alongside the reading pane, "largest" tends to mean "the whole
+// list", not "the one job you're looking at").
+const PRECISE_DESCRIPTION_SELECTORS = [
+  // LinkedIn — data-testid is a QA hook LinkedIn keeps stable across rebuilds,
+  // unlike its hashed CSS classes (e.g. "_206505cb"), which regenerate on
+  // every deploy and aren't safe to match on at all.
+  '[data-testid="expandable-text-box"]',
+  ".jobs-description__content",
+  ".jobs-description-content__text",
+  ".jobs-box__html-content",
+  "#job-details",
+  // Generic boards
+  '[class*="job-description"]',
+  '[class*="jobDescription"]',
+  '[class*="description__text"]',
+  '[id*="job-description"]',
+  '[id*="jobDescription"]',
+  '[class*="posting-requirements"]',
+];
+
+// Headings that reliably introduce the actual job description body — used
+// as a last-ditch, class-agnostic way to locate the description when a site
+// (LinkedIn included) has none of the selectors above and no JSON-LD.
+const DESCRIPTION_HEADING_TEXTS = ["about the job", "job description", "about this role", "role overview"];
+
+const GENERIC_DESCRIPTION_SELECTORS = ['[class*="job-details"]', "article"];
+
+// Hard cap regardless of source — protects against a mis-extraction (e.g. a
+// wrapping container that swept in an entire job list) blowing through the
+// AI provider's per-minute token quota in a single request.
+const MAX_DESCRIPTION_CHARS = 8000;
+
+function textFrom(el: Element): string {
+  return (el.textContent || "").replace(/\s+/g, " ").trim();
+}
+
+// Cap for widening: a real single job description (plus a small overview
+// box) doesn't run past ~20k characters; past that it's almost certainly a
+// container that swept in a job list or other unrelated page content.
+const WIDEN_CAP_CHARS = 20_000;
+
+/**
+ * Some boards (job aggregators especially) render a "Company Name / Location
+ * / Job Type" overview box as a sibling of the actual description container,
+ * not a descendant — matching only the description element then loses that
+ * info entirely, even though it's sitting right next to it. Climb a few
+ * ancestor levels and keep the largest one that still stays under the sweep
+ * cap, so a nearby overview box gets pulled in without risking a full
+ * sidebar/job-list sweep.
+ */
+function widenText(el: Element, text: string): string {
+  let node: Element = el;
+  let best = text;
+  for (let i = 0; i < 4 && node.parentElement; i++) {
+    node = node.parentElement;
+    const parentText = textFrom(node);
+    if (parentText.length <= WIDEN_CAP_CHARS && parentText.length > best.length) {
+      best = parentText;
+    } else if (parentText.length > WIDEN_CAP_CHARS) {
+      break;
+    }
+  }
+  return best;
+}
+
+/**
+ * Finds the description by locating a heading like "About the job" and
+ * reading the next sibling with real content — works regardless of class
+ * names, since it keys off visible heading text instead.
+ */
+function findByHeadingText(): { el: Element; text: string } | null {
+  for (const heading of document.querySelectorAll("h1, h2, h3, h4")) {
+    const headingText = textFrom(heading).toLowerCase();
+    if (!DESCRIPTION_HEADING_TEXTS.includes(headingText)) continue;
+    let sibling = heading.nextElementSibling;
+    while (sibling) {
+      const text = textFrom(sibling);
+      if (text.length > 200) return { el: sibling, text };
+      sibling = sibling.nextElementSibling;
+    }
+  }
+  return null;
+}
+
+/** Falls back to page text extraction when no JSON-LD is present. */
+function extractHeuristic(): JobPosting | null {
+  for (const selector of PRECISE_DESCRIPTION_SELECTORS) {
+    const el = document.querySelector(selector);
+    if (!el) continue;
+    const text = textFrom(el);
+    if (text.length > 200) return buildResult(widenText(el, text));
+  }
+
+  const byHeading = findByHeadingText();
+  if (byHeading) return buildResult(widenText(byHeading.el, byHeading.text));
+
+  let best: { text: string; el: Element } | null = null;
+  for (const selector of GENERIC_DESCRIPTION_SELECTORS) {
+    for (const el of document.querySelectorAll(selector)) {
+      const text = textFrom(el);
+      // Skip anything implausibly large — a real single job description
+      // doesn't run past ~20k characters; past that it's almost certainly
+      // a container that swept in surrounding page content too.
+      if (text.length > 200 && text.length < 20_000 && (!best || text.length > best.text.length)) {
+        best = { text, el };
+      }
+    }
+  }
+  if (best) return buildResult(widenText(best.el, best.text));
+
+  // Last resort: the largest small-ish <div>/<section>/<main> text block.
+  for (const el of document.querySelectorAll("div, section, main")) {
+    if (el.children.length > 20) continue; // skip obvious layout containers
+    const text = textFrom(el);
+    if (text.length > 300 && text.length < 20_000 && (!best || text.length > best.text.length)) {
+      best = { text, el };
+    }
+  }
+
+  return best ? buildResult(widenText(best.el, best.text)) : null;
+}
+
+function buildResult(rawText: string): JobPosting {
+  return {
+    title: document.title || "Untitled role",
+    company: "Unknown company",
+    description: rawText,
+    url: window.location.href,
+  };
+}
+
+function truncate(text: string): string {
+  return text.length > MAX_DESCRIPTION_CHARS
+    ? text.slice(0, MAX_DESCRIPTION_CHARS) + " …[truncated]"
+    : text;
+}
+
+// Some boards (bdjobs.com and similar) render required skills as a row of
+// pill/tag buttons in a dedicated "Skills" widget, entirely separate from
+// the prose description container — plain textContent extraction of that
+// container misses them since they live elsewhere in the DOM. "apphighlight"
+// is bdjobs.com's own Angular directive attribute marking these tags; the
+// rest are generic patterns other boards tend to use for the same widget.
+const SKILL_CHIP_SELECTORS = [
+  "[apphighlight]",
+  '[class*="skill-tag"]',
+  '[class*="skills-tag"]',
+  '[class*="skill_tag"]',
+  '[data-testid*="skill"]',
+];
+
+function extractSkillChips(): string[] {
+  const seen = new Set<string>();
+  for (const selector of SKILL_CHIP_SELECTORS) {
+    for (const el of document.querySelectorAll(selector)) {
+      const text = textFrom(el);
+      if (text && text.length < 60) seen.add(text);
+    }
+  }
+  return [...seen];
+}
+
+/**
+ * Folds any skill chips not already mentioned in the prose description into
+ * an explicit "Required skills" line so the AI reads them directly, instead
+ * of silently losing a widget that plain textContent extraction skipped.
+ */
+function appendSkillsLine(description: string, chips: string[]): string {
+  if (chips.length === 0) return description;
+  const lowerDescription = description.toLowerCase();
+  const missing = chips.filter((chip) => !lowerDescription.includes(chip.toLowerCase()));
+  if (missing.length === 0) return description;
+  return `${description}\n\nRequired skills: ${missing.join(", ")}`;
+}
+
+// LinkedIn ships CSS-in-JS with hashed, build-specific class names (e.g.
+// "_206505cb") that churn constantly — matching on them is a losing game.
+// These signals are structural instead and much more stable: a real link to
+// a company page, the "posted X ago" timestamp that always sits next to the
+// location, and the "check-small" icon LinkedIn uses to mark the workplace
+// type / employment type pills next to the apply button.
+const LINKEDIN_AGO_PATTERN = /\b\d+\s+(second|minute|hour|day|week|month|year)s?\s+ago\b/i;
+const LINKEDIN_WORK_MODE_WORDS = /^(remote|hybrid|on-site|onsite)$/i;
+const LINKEDIN_EMPLOYMENT_TYPE_WORDS =
+  /^(full-time|part-time|contract|internship|temporary|volunteer|other)$/i;
+
+interface LinkedInMeta {
+  company: string | null;
+  location: string | null;
+  employmentType: string | null;
+  workMode: string | null;
+}
+
+function extractLinkedInMeta(): LinkedInMeta {
+  let company: string | null = null;
+  const companyLink = document.querySelector<HTMLAnchorElement>(
+    'a[href*="linkedin.com/company/"], a[href^="/company/"]'
+  );
+  if (companyLink) {
+    const text = textFrom(companyLink);
+    if (text && text.length < 100) company = text;
+  }
+
+  // The location sits beside a "posted X ago" timestamp, separated by "·"
+  // bullets (e.g. "Dhaka, Bangladesh · 3 months ago · Over 100 people
+  // clicked apply") — find that line and take the segment before the first
+  // bullet, since that's consistently the location across LinkedIn's layouts.
+  let location: string | null = null;
+  for (const el of document.querySelectorAll("p, span, div")) {
+    if (el.children.length > 8) continue;
+    const text = textFrom(el);
+    if (text.length > 150 || !LINKEDIN_AGO_PATTERN.test(text)) continue;
+    const first = text.split("·")[0]?.trim();
+    if (first && first.length < 80 && !LINKEDIN_AGO_PATTERN.test(first) && !/applicant|clicked apply|applied/i.test(first)) {
+      location = first;
+      break;
+    }
+  }
+
+  // Workplace-type ("Hybrid"/"Remote"/"On-site") and employment-type
+  // ("Full-time"/"Part-time"/…) pills both use the same check-mark icon —
+  // classify each by matching its label text against the known word sets
+  // rather than trusting any particular class name.
+  let employmentType: string | null = null;
+  let workMode: string | null = null;
+  for (const svg of document.querySelectorAll('svg[id="check-small"]')) {
+    const container = svg.closest("a") ?? svg.parentElement;
+    if (!container) continue;
+    const spans = container.querySelectorAll("span");
+    const label = spans.length > 0 ? textFrom(spans[spans.length - 1]) : "";
+    if (!label) continue;
+    if (!workMode && LINKEDIN_WORK_MODE_WORDS.test(label)) workMode = label;
+    else if (!employmentType && LINKEDIN_EMPLOYMENT_TYPE_WORDS.test(label)) employmentType = label;
+  }
+
+  return { company, location, employmentType, workMode };
+}
+
+function applyLinkedInMeta(job: JobPosting): JobPosting {
+  const meta = extractLinkedInMeta();
+
+  const company = !job.company || job.company === "Unknown company" ? meta.company ?? job.company : job.company;
+  const location = job.location ?? meta.location ?? undefined;
+
+  const extraLines: string[] = [];
+  if (meta.employmentType) extraLines.push(`Employment type: ${meta.employmentType}`);
+  if (meta.workMode) extraLines.push(`Workplace type: ${meta.workMode}`);
+  const description = extraLines.length > 0 ? `${job.description}\n\n${extraLines.join("\n")}` : job.description;
+
+  return { ...job, company, location, description };
+}
+
+export function extractJobPosting(): JobPosting | null {
+  const skillChips = extractSkillChips();
+  let base = extractFromJsonLd() ?? extractHeuristic();
+  if (!base) return null;
+
+  base = { ...base, description: appendSkillsLine(base.description, skillChips) };
+  if (window.location.hostname.includes("linkedin.com")) base = applyLinkedInMeta(base);
+
+  return { ...base, description: truncate(base.description) };
+}

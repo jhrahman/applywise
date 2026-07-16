@@ -1,0 +1,47 @@
+{
+  "manifest_version": 3,
+  "name": "Applywise — AI Job Match Copilot",
+  "version": "0.1.0",
+  "description": "Match your resume against any job posting, spot missing skills, and get ATS notes — computed entirely in your browser.",
+  "icons": {
+    "16": "icons/icon-16.png",
+    "32": "icons/icon-32.png",
+    "48": "icons/icon-48.png",
+    "128": "icons/icon-128.png"
+  },
+  "action": {
+    "default_popup": "popup.html",
+    "default_icon": {
+      "16": "icons/icon-16.png",
+      "32": "icons/icon-32.png",
+      "48": "icons/icon-48.png",
+      "128": "icons/icon-128.png"
+    }
+  },
+  "background": {
+    "service_worker": "background.js",
+    "type": "module"
+  },
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "js": ["content-script.js"],
+      "run_at": "document_idle"
+    },
+    {
+      "matches": ["http://localhost:5173/*", "http://localhost:5174/*"],
+      "js": ["app-bridge.js"],
+      "run_at": "document_start"
+    }
+  ],
+  "permissions": ["storage", "activeTab", "scripting", "tabs"],
+  "host_permissions": [
+    "<all_urls>"
+  ],
+  "browser_specific_settings": {
+    "gecko": {
+      "id": "applywise@extension.local",
+      "strict_min_version": "121.0"
+    }
+  }
+}
