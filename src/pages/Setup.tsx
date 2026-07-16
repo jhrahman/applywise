@@ -20,13 +20,16 @@ const MAX_RESUMES = 3;
 const MODELS: Record<AiProvider, { label: string; value: string }[]> = {
   // Ongoing free tier (rate-limited, no card required).
   gemini: [
-    { label: "Gemini 3 Flash Preview — confirmed working", value: "gemini-3-flash-preview" },
-    { label: "Gemini 3.1 Flash Lite — fast, cost-efficient", value: "gemini-3.1-flash-lite" },
+    { label: "Gemini 3 Flash Preview — confirmed working, recommended", value: "gemini-3-flash-preview" },
     { label: "Gemini 3.5 Flash — flagship", value: "gemini-3.5-flash" },
     { label: "Gemini 3.1 Pro Preview — strongest reasoning", value: "gemini-3.1-pro-preview" },
     { label: "Gemini Flash Latest — always points at newest Flash", value: "gemini-flash-latest" },
-    { label: "Gemini Flash Lite Latest — always points at newest Flash Lite", value: "gemini-flash-lite-latest" },
     { label: "Gemini Pro Latest — always points at newest Pro", value: "gemini-pro-latest" },
+    { label: "Gemini 3.1 Flash Lite — fastest, but shallower skill matching", value: "gemini-3.1-flash-lite" },
+    {
+      label: "Gemini Flash Lite Latest — fastest, but shallower skill matching",
+      value: "gemini-flash-lite-latest",
+    },
   ],
   // New-account trial credits (not an ongoing free tier), then pay-as-you-go.
   deepseek: [

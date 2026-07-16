@@ -4,8 +4,8 @@ import {
   extractJsonPayload,
   interviewQuestionsJsonSchema,
   interviewQuestionsSchema,
-  matchAnalysisJsonSchema,
   matchAnalysisSchema,
+  matchAnalysisThoroughJsonSchema,
 } from "./schema";
 import {
   assertOk,
@@ -71,8 +71,12 @@ export function createOpenAiCompatibleClient(options: {
 
   return {
     async generateMatchAnalysis(resumeText: string, job: JobPosting): Promise<MatchAnalysis> {
+      // The prompt always asks the model to reason through requirementAnalysis
+      // before scoring; the thorough schema exposes that field for providers
+      // that use structured output (OpenAI). Providers that don't (DeepSeek/
+      // GLM/xAI) still produce it from the prompt, and zod strips it on parse.
       const prompt = buildMatchAnalysisPrompt(resumeText, job);
-      const text = await call(prompt, "match_analysis", matchAnalysisJsonSchema, MATCH_ANALYSIS_TEMPERATURE);
+      const text = await call(prompt, "match_analysis", matchAnalysisThoroughJsonSchema, MATCH_ANALYSIS_TEMPERATURE);
       return matchAnalysisSchema.parse(extractJsonPayload(text));
     },
 

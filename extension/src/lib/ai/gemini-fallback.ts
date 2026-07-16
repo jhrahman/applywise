@@ -1,16 +1,34 @@
 // Mirrors the free-tier Gemini model list on the web app's Setup page
-// (src/pages/Setup.tsx) — keep in sync if that list changes. This is the
-// order tried when the configured model times out or is under high load, so
-// a single busy/slow model doesn't fail the whole analysis outright.
-export const GEMINI_FALLBACK_MODELS = [
+// (src/pages/Setup.tsx) — keep in sync if that list changes.
+//
+// Split into two tiers rather than one flat list: a side-by-side test (same
+// resume, same posting) showed meaningfully shallower skill matching from
+// flash-lite vs. flash-preview/3.5-flash — "lite" tiers trade reasoning
+// depth for speed/cost across every provider, and matching skills against a
+// resume is exactly the kind of multi-step reasoning that trade-off hurts.
+// So the fallback strategy (see withGeminiFallback in background.ts) retries
+// every full-reasoning model — each one more than once, with a short pause,
+// since "busy" is often transient — before ever touching a lite model. Lite
+// models are only used if every full-reasoning model is confirmed down.
+export const GEMINI_PREFERRED_MODELS = [
   "gemini-3-flash-preview",
   "gemini-flash-latest",
-  "gemini-3.1-flash-lite",
-  "gemini-flash-lite-latest",
   "gemini-3.5-flash",
   "gemini-3.1-pro-preview",
   "gemini-pro-latest",
 ];
+
+export const GEMINI_LITE_MODELS = ["gemini-3.1-flash-lite", "gemini-flash-lite-latest"];
+
+export function isLiteGeminiModel(model: string): boolean {
+  return GEMINI_LITE_MODELS.includes(model);
+}
+
+// How many times to retry each full-reasoning model before moving to the
+// next one — a "busy"/high-demand error is often transient, so it's worth
+// knocking on the same door twice before giving up on it.
+export const RETRIES_PER_PREFERRED_MODEL = 2;
+export const RETRY_BACKOFF_MS = 1500;
 
 /**
  * Only errors that plausibly go away by trying a different model are worth

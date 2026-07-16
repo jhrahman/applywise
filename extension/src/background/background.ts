@@ -1,7 +1,14 @@
 import { getItem, setItem, STORAGE_KEYS } from "../lib/storage";
 import { APP_URL } from "../lib/config";
 import { getAiClient, AiRequestError } from "../lib/ai";
-import { GEMINI_FALLBACK_MODELS, isRetryableGeminiError } from "../lib/ai/gemini-fallback";
+import {
+  GEMINI_PREFERRED_MODELS,
+  GEMINI_LITE_MODELS,
+  isLiteGeminiModel,
+  isRetryableGeminiError,
+  RETRIES_PER_PREFERRED_MODEL,
+  RETRY_BACKOFF_MS,
+} from "../lib/ai/gemini-fallback";
 import { browserApi } from "../lib/browser-api";
 import type { Resume, ProviderSettings, JobEntry, JobPosting } from "../lib/types";
 import type {
@@ -37,40 +44,93 @@ function sendProgress(tabId: number | undefined, text: string): void {
   browserApi.tabs.sendMessage(tabId, message).catch(() => {});
 }
 
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+export interface GeminiAttemptInfo {
+  model: string;
+  attemptNumber: number;
+  maxAttempts: number;
+  previousModel: string | null;
+  usingLiteFallback: boolean;
+}
+
 /**
  * Runs `attempt` with the configured model first; on a timeout/429/high-load
- * error from Gemini, retries with the next free-tier model instead of
- * failing the whole request. Other providers (and non-retryable errors, e.g.
- * a bad API key) just run once, since switching models can't fix those.
- * `onAttempt` fires before every attempt (including the first) so the caller
- * can surface live progress — which model is being tried, and whether this
- * is a fresh attempt or a fallback after the previous one failed.
+ * error from Gemini, keeps retrying — first the same model a couple more
+ * times (a "busy" error is often transient), then the next full-reasoning
+ * model, and so on through every model in GEMINI_PREFERRED_MODELS, each
+ * with its own retries, before touching a "lite" model at all. Lite models
+ * (see gemini-fallback.ts) are a last resort tried once each, only once
+ * every full-reasoning model is confirmed down. Other providers (and
+ * non-retryable errors, e.g. a bad API key) just run once, since switching
+ * models can't fix those. `onAttempt` fires before every attempt so the
+ * caller can surface live progress.
  */
 async function withGeminiFallback<T>(
   settings: ProviderSettings,
   attempt: (settings: ProviderSettings) => Promise<T>,
-  onAttempt?: (model: string, previousModel: string | null) => void
+  onAttempt?: (info: GeminiAttemptInfo) => void
 ): Promise<{ result: T; modelUsed: string }> {
   if (settings.provider !== "gemini") {
-    onAttempt?.(settings.model, null);
+    onAttempt?.({ model: settings.model, attemptNumber: 1, maxAttempts: 1, previousModel: null, usingLiteFallback: false });
     return { result: await attempt(settings), modelUsed: settings.model };
   }
 
-  const order = [settings.model, ...GEMINI_FALLBACK_MODELS.filter((m) => m !== settings.model)];
+  const configured = settings.model;
+  const modelOrder = [
+    configured,
+    ...GEMINI_PREFERRED_MODELS.filter((m) => m !== configured),
+    ...GEMINI_LITE_MODELS.filter((m) => m !== configured),
+  ];
+
+  let previousModel: string | null = null;
   let lastErr: unknown;
-  for (let i = 0; i < order.length; i++) {
-    const model = order[i];
-    onAttempt?.(model, i > 0 ? order[i - 1] : null);
-    try {
-      const result = await attempt({ ...settings, model });
-      return { result, modelUsed: model };
-    } catch (err) {
-      lastErr = err;
-      const isLastAttempt = i === order.length - 1;
-      if (isLastAttempt || !isRetryableGeminiError(err)) throw err;
+
+  for (let mi = 0; mi < modelOrder.length; mi++) {
+    const model = modelOrder[mi];
+    const isLastModel = mi === modelOrder.length - 1;
+    const maxAttempts = isLiteGeminiModel(model) ? 1 : RETRIES_PER_PREFERRED_MODEL;
+
+    for (let attemptNumber = 1; attemptNumber <= maxAttempts; attemptNumber++) {
+      onAttempt?.({
+        model,
+        attemptNumber,
+        maxAttempts,
+        previousModel: attemptNumber === 1 ? previousModel : null,
+        usingLiteFallback: isLiteGeminiModel(model) && model !== configured,
+      });
+      try {
+        const result = await attempt({ ...settings, model });
+        return { result, modelUsed: model };
+      } catch (err) {
+        lastErr = err;
+        if (!isRetryableGeminiError(err)) throw err;
+        const isLastAttemptForModel = attemptNumber === maxAttempts;
+        if (isLastAttemptForModel && isLastModel) throw err;
+        if (!isLastAttemptForModel) await sleep(RETRY_BACKOFF_MS);
+      }
     }
+    previousModel = model;
   }
   throw lastErr;
+}
+
+/** Turns a GeminiAttemptInfo into a human-readable status line for the floating widget. */
+function describeAttempt(info: GeminiAttemptInfo): string {
+  if (info.attemptNumber > 1) {
+    return `${info.model} still busy — retrying (${info.attemptNumber}/${info.maxAttempts})…`;
+  }
+  if (info.usingLiteFallback) {
+    return info.previousModel
+      ? `${info.previousModel} still busy — no full-power models left, trying ${info.model} as a last resort…`
+      : `Trying ${info.model}…`;
+  }
+  if (info.previousModel) {
+    return `${info.previousModel} was unavailable — trying ${info.model}…`;
+  }
+  return `Analyzing with ${info.model}…`;
 }
 
 /** Persists the model actually used if the fallback switched away from the configured one. */
@@ -118,14 +178,7 @@ async function handleAnalyze(
     const result = await withGeminiFallback(
       settings,
       (s) => getAiClient(s).generateMatchAnalysis(resume.parsedText, job),
-      (model, previousModel) => {
-        sendProgress(
-          tabId,
-          previousModel
-            ? `${previousModel} was busy — retrying with ${model}…`
-            : `Analyzing with ${model}…`
-        );
-      }
+      (info) => sendProgress(tabId, describeAttempt(info))
     );
     analysis = result.result;
     modelUsed = result.modelUsed;

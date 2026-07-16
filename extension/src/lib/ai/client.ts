@@ -16,11 +16,20 @@ export const MATCH_ANALYSIS_TEMPERATURE = 0.1;
 export const INTERVIEW_QUESTIONS_TEMPERATURE = 0.5;
 
 // Gemini match analysis can fall back across several models (see
-// gemini-fallback.ts) — a shorter per-attempt timeout means a stuck/
-// overloaded model gets abandoned for the next one sooner instead of eating
-// most of a 30s wait every single retry. Other providers/calls keep
-// fetchWithTimeout's default since they have no fallback to fall through to.
-export const MATCH_ANALYSIS_TIMEOUT_MS = 15_000;
+// gemini-fallback.ts) — a bounded per-attempt timeout means a stuck/
+// overloaded model gets abandoned for the next one instead of eating a full
+// 30s+ wait every retry. Set a little higher than the old 15s now that every
+// model produces the requirementAnalysis enumeration (more output = more
+// time), so a model that's genuinely working doesn't get killed mid-answer.
+// Other providers/calls keep fetchWithTimeout's default since they have no
+// fallback to fall through to.
+export const MATCH_ANALYSIS_TIMEOUT_MS = 20_000;
+
+// Lite models additionally get the anti-skim nudge and are the last resort in
+// the fallback chain — nothing follows them, so a timeout here means total
+// failure. Give that path extra headroom so a large enumeration finishes
+// instead of getting killed mid-reasoning.
+export const MATCH_ANALYSIS_THOROUGH_TIMEOUT_MS = 30_000;
 
 export async function fetchWithTimeout(
   input: string,

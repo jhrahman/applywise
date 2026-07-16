@@ -4,17 +4,19 @@ import {
   extractJsonPayload,
   interviewQuestionsJsonSchema,
   interviewQuestionsSchema,
-  matchAnalysisJsonSchema,
   matchAnalysisSchema,
+  matchAnalysisThoroughGeminiJsonSchema,
 } from "./schema";
 import {
   assertOk,
   fetchWithTimeout,
   INTERVIEW_QUESTIONS_TEMPERATURE,
   MATCH_ANALYSIS_TEMPERATURE,
+  MATCH_ANALYSIS_THOROUGH_TIMEOUT_MS,
   MATCH_ANALYSIS_TIMEOUT_MS,
   type AiClient,
 } from "./client";
+import { isLiteGeminiModel } from "./gemini-fallback";
 
 const BASE_URL = "https://generativelanguage.googleapis.com/v1beta/models";
 
@@ -58,14 +60,20 @@ async function callGemini(
 export function createGeminiClient(apiKey: string, model: string): AiClient {
   return {
     async generateMatchAnalysis(resumeText: string, job: JobPosting): Promise<MatchAnalysis> {
-      const prompt = buildMatchAnalysisPrompt(resumeText, job);
+      // Every Gemini model gets the reasoning scratchpad (schema + prompt) so
+      // it enumerates requirements before scoring — this is what keeps the
+      // score stable run-to-run. Lite models additionally get the anti-skim
+      // nudge and a longer timeout, since they skim more and are the slower
+      // last resort in the fallback chain.
+      const lite = isLiteGeminiModel(model);
+      const prompt = buildMatchAnalysisPrompt(resumeText, job, { thorough: lite });
       const text = await callGemini(
         apiKey,
         model,
         prompt,
-        matchAnalysisJsonSchema,
+        matchAnalysisThoroughGeminiJsonSchema,
         MATCH_ANALYSIS_TEMPERATURE,
-        MATCH_ANALYSIS_TIMEOUT_MS
+        lite ? MATCH_ANALYSIS_THOROUGH_TIMEOUT_MS : MATCH_ANALYSIS_TIMEOUT_MS
       );
       return matchAnalysisSchema.parse(extractJsonPayload(text));
     },

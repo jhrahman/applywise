@@ -86,6 +86,76 @@ export const matchAnalysisJsonSchema = {
   ],
 } as const;
 
+// Chain-of-thought captured *inside* the structured output. A strict JSON
+// schema with responseMimeType=application/json (Gemini) or a json_schema
+// response_format (OpenAI) gives a model no room to reason before it commits
+// to a value — so it tends to emit matchScore near the top of the object as a
+// first-impression guess, which is the root cause of the same resume+posting
+// scoring wildly differently between runs. Making the model fill this
+// scratchpad FIRST forces the enumerate-then-judge work to be generated
+// before the score, so the score is conditioned on the actual
+// requirement-by-requirement analysis. This is applied to *all* models now,
+// not just lite ones — strong models are more stable but still benefit. The
+// zod schema doesn't include this field, so it's stripped on parse; it exists
+// purely to steer generation, never reaching the UI.
+const requirementAnalysisJsonSchema = {
+  type: "array",
+  description:
+    "Fill this out FIRST, before any other field. One entry per distinct requirement, skill, tool, or qualification stated anywhere in the job posting. Do not summarize or group — list them individually.",
+  items: {
+    type: "object",
+    properties: {
+      requirement: { type: "string", description: "The individual requirement, exactly as the posting frames it." },
+      kind: {
+        type: "string",
+        description: 'Either "required" (must-have) or "preferred" (nice-to-have). If the posting does not distinguish, use "required".',
+      },
+      resumeEvidence: {
+        type: "string",
+        nullable: true,
+        description:
+          "The specific words/experience in the resume that satisfy this requirement, or null if the resume shows no real evidence of it. Do not invent evidence or assume unrelated experience counts.",
+      },
+      status: {
+        type: "string",
+        description: 'Either "found" (resumeEvidence is present and genuinely satisfies it) or "missing".',
+      },
+    },
+    required: ["requirement", "kind", "resumeEvidence", "status"],
+  },
+} as const;
+
+// Universal reasoning schema: matchAnalysisJsonSchema with the
+// requirementAnalysis scratchpad prepended (declared first, so field-order
+// puts it before matchScore). Standard JSON Schema only — safe to hand to
+// OpenAI's json_schema response_format as well as Gemini.
+export const matchAnalysisThoroughJsonSchema = {
+  type: "object",
+  properties: {
+    requirementAnalysis: requirementAnalysisJsonSchema,
+    ...matchAnalysisJsonSchema.properties,
+  },
+  required: ["requirementAnalysis", ...matchAnalysisJsonSchema.required],
+} as const;
+
+// Gemini-only variant: adds propertyOrdering, a Gemini-specific Schema field
+// that guarantees generation order (belt-and-suspenders over declaration
+// order). Kept out of the universal schema above because it's not a standard
+// JSON Schema keyword and shouldn't be sent to other providers' validators.
+export const matchAnalysisThoroughGeminiJsonSchema = {
+  ...matchAnalysisThoroughJsonSchema,
+  propertyOrdering: [
+    "requirementAnalysis",
+    "matchScore",
+    "matchingSkills",
+    "missingSkills",
+    "missingKeywords",
+    "atsNotes",
+    "suggestions",
+    "jobDetails",
+  ],
+} as const;
+
 export const interviewQuestionsJsonSchema = {
   type: "array",
   items: {
