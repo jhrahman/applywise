@@ -7,7 +7,14 @@ import {
   matchAnalysisJsonSchema,
   matchAnalysisSchema,
 } from "./schema";
-import { assertOk, fetchWithTimeout, type AiClient } from "./client";
+import {
+  assertOk,
+  fetchWithTimeout,
+  INTERVIEW_QUESTIONS_TEMPERATURE,
+  MATCH_ANALYSIS_TEMPERATURE,
+  MATCH_ANALYSIS_TIMEOUT_MS,
+  type AiClient,
+} from "./client";
 
 const BASE_URL = "https://generativelanguage.googleapis.com/v1beta/models";
 
@@ -15,23 +22,29 @@ async function callGemini(
   apiKey: string,
   model: string,
   prompt: string,
-  responseSchema: unknown
+  responseSchema: unknown,
+  temperature: number,
+  timeoutMs?: number
 ): Promise<string> {
-  const response = await fetchWithTimeout(`${BASE_URL}/${model}:generateContent`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "x-goog-api-key": apiKey,
-    },
-    body: JSON.stringify({
-      contents: [{ role: "user", parts: [{ text: prompt }] }],
-      generationConfig: {
-        responseMimeType: "application/json",
-        responseSchema,
-        temperature: 0.4,
+  const response = await fetchWithTimeout(
+    `${BASE_URL}/${model}:generateContent`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-goog-api-key": apiKey,
       },
-    }),
-  });
+      body: JSON.stringify({
+        contents: [{ role: "user", parts: [{ text: prompt }] }],
+        generationConfig: {
+          responseMimeType: "application/json",
+          responseSchema,
+          temperature,
+        },
+      }),
+    },
+    timeoutMs
+  );
 
   const body = await response.text();
   assertOk(response, body, "Gemini");
@@ -46,13 +59,26 @@ export function createGeminiClient(apiKey: string, model: string): AiClient {
   return {
     async generateMatchAnalysis(resumeText: string, job: JobPosting): Promise<MatchAnalysis> {
       const prompt = buildMatchAnalysisPrompt(resumeText, job);
-      const text = await callGemini(apiKey, model, prompt, matchAnalysisJsonSchema);
+      const text = await callGemini(
+        apiKey,
+        model,
+        prompt,
+        matchAnalysisJsonSchema,
+        MATCH_ANALYSIS_TEMPERATURE,
+        MATCH_ANALYSIS_TIMEOUT_MS
+      );
       return matchAnalysisSchema.parse(extractJsonPayload(text));
     },
 
     async generateInterviewQuestions(resumeText: string, job: JobPosting): Promise<InterviewQA[]> {
       const prompt = buildInterviewQuestionsPrompt(resumeText, job);
-      const text = await callGemini(apiKey, model, prompt, interviewQuestionsJsonSchema);
+      const text = await callGemini(
+        apiKey,
+        model,
+        prompt,
+        interviewQuestionsJsonSchema,
+        INTERVIEW_QUESTIONS_TEMPERATURE
+      );
       return interviewQuestionsSchema.parse(extractJsonPayload(text));
     },
   };

@@ -17,3 +17,13 @@ export type AnalyzeResponse =
 export type GenerateInterviewQuestionsResponse =
   | { ok: true; entry: JobEntry }
   | { ok: false; error: string };
+
+// Pushed from the background service worker to the originating tab while an
+// analysis is in flight (not a request/response — no reply expected). Lets
+// the floating widget show real progress (which model is being tried, and
+// whether a fallback kicked in) instead of a generic "Analyzing…" the whole
+// time.
+export interface AnalyzeProgressMessage {
+  type: "ANALYZE_PROGRESS";
+  text: string;
+}

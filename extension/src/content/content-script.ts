@@ -1,7 +1,12 @@
 import { extractJobPosting } from "../lib/extract";
 import { getItem, STORAGE_KEYS } from "../lib/storage";
 import { browserApi } from "../lib/browser-api";
-import type { ExtensionMessage, GetResumesResponse, AnalyzeResponse } from "../lib/messages";
+import type {
+  ExtensionMessage,
+  GetResumesResponse,
+  AnalyzeResponse,
+  AnalyzeProgressMessage,
+} from "../lib/messages";
 import type { JobPosting } from "../lib/types";
 
 const STYLE = `
@@ -35,6 +40,25 @@ const STYLE = `
   }
   .fab:active { transform: translateY(0) scale(0.98); }
   .fab:disabled { opacity: 0.6; cursor: default; transform: none; box-shadow: none; }
+
+  .fab-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: #1a1206;
+    flex-shrink: 0;
+    animation: fab-dot-pulse 1.1s ease-in-out infinite;
+  }
+  @keyframes fab-dot-pulse {
+    0%, 100% { opacity: 0.35; transform: scale(0.85); }
+    50% { opacity: 1; transform: scale(1); }
+  }
+  .fab-text { display: inline-block; }
+  .fab-text.fab-text-in { animation: fab-text-in 0.28s ease; }
+  @keyframes fab-text-in {
+    from { opacity: 0; transform: translateY(3px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
 
   .overlay {
     position: fixed;
@@ -125,6 +149,7 @@ class ApplywiseWidget {
   private fab: HTMLButtonElement | null = null;
   private job: JobPosting | null = null;
   private enabled = true;
+  private statusTimer: ReturnType<typeof setInterval> | null = null;
 
   constructor() {
     this.host = document.createElement("div");
@@ -156,7 +181,13 @@ class ApplywiseWidget {
   private mountFab() {
     const fab = document.createElement("button");
     fab.className = "fab";
-    fab.textContent = "Analyze with Applywise";
+    const dot = document.createElement("span");
+    dot.className = "fab-dot";
+    dot.style.display = "none";
+    const text = document.createElement("span");
+    text.className = "fab-text";
+    text.textContent = "Analyze with Applywise";
+    fab.append(dot, text);
     fab.addEventListener("click", () => this.onFabClick());
     this.shadow.appendChild(fab);
     this.fab = fab;
@@ -167,10 +198,38 @@ class ApplywiseWidget {
     this.fab = null;
   }
 
+  /** Swaps the button's label with a small fade-in, and toggles the pulsing "busy" dot. */
+  private setFabText(text: string, busy: boolean) {
+    if (!this.fab) return;
+    const dot = this.fab.querySelector<HTMLSpanElement>(".fab-dot");
+    if (dot) dot.style.display = busy ? "inline-block" : "none";
+    const span = this.fab.querySelector<HTMLSpanElement>(".fab-text");
+    if (!span) return;
+    span.textContent = text;
+    span.classList.remove("fab-text-in");
+    void span.offsetWidth; // reflow, so re-adding the class restarts the animation
+    span.classList.add("fab-text-in");
+  }
+
+  /**
+   * Called from the top-level ANALYZE_PROGRESS listener with real status
+   * pushed from the background service worker (e.g. which AI model is being
+   * tried, or that a fallback kicked in after one timed out). Ignored once
+   * the button is idle again, so a late message can't stomp on it.
+   */
+  showProgress(text: string) {
+    if (!this.fab || !this.fab.disabled) return;
+    if (this.statusTimer) {
+      clearInterval(this.statusTimer);
+      this.statusTimer = null;
+    }
+    this.setFabText(text, true);
+  }
+
   private async onFabClick() {
     if (!this.fab || !this.job) return;
     this.fab.disabled = true;
-    this.fab.textContent = "Loading…";
+    this.setFabText("Loading…", true);
 
     try {
       const { resumes, hasApiKey } = await sendMessage<GetResumesResponse>({ type: "GET_RESUMES" });
@@ -195,7 +254,7 @@ class ApplywiseWidget {
     } finally {
       if (this.fab) {
         this.fab.disabled = false;
-        this.fab.textContent = "Analyze with Applywise";
+        this.setFabText("Analyze with Applywise", false);
       }
     }
   }
@@ -254,12 +313,15 @@ class ApplywiseWidget {
     if (!this.job || !this.fab) return;
     this.fab.disabled = true;
 
+    // Local heartbeat until the background worker's real progress messages
+    // start arriving (showProgress() clears this timer the moment one does)
+    // — covers the brief gap before the first ANALYZE_PROGRESS push lands.
     const statusSteps = ["Scanning job description…", "Comparing with your resume…", "Analyzing…"];
     let step = 0;
-    this.fab.textContent = statusSteps[0];
-    const statusTimer = setInterval(() => {
+    this.setFabText(statusSteps[0], true);
+    this.statusTimer = setInterval(() => {
       step = Math.min(step + 1, statusSteps.length - 1);
-      if (this.fab) this.fab.textContent = statusSteps[step];
+      this.setFabText(statusSteps[step], true);
     }, 1400);
 
     try {
@@ -272,10 +334,13 @@ class ApplywiseWidget {
     } catch (err) {
       this.showMessage(err instanceof Error ? err.message : "Something went wrong. Please try again.");
     } finally {
-      clearInterval(statusTimer);
+      if (this.statusTimer) {
+        clearInterval(this.statusTimer);
+        this.statusTimer = null;
+      }
       if (this.fab) {
         this.fab.disabled = false;
-        this.fab.textContent = "Analyze with Applywise";
+        this.setFabText("Analyze with Applywise", false);
       }
     }
   }
@@ -292,6 +357,14 @@ browserApi.storage.onChanged.addListener((changes, areaName) => {
   if (areaName !== "local") return;
   const change = changes[STORAGE_KEYS.enabled];
   if (change) widget.setEnabled((change.newValue as boolean | undefined) ?? true);
+});
+
+// One-way pushes from the background worker while an analysis is running —
+// see AnalyzeProgressMessage. No response expected, so this listener returns
+// nothing (as opposed to sendMessage()'s request/response listener in
+// background.ts).
+browserApi.runtime.onMessage.addListener((message: AnalyzeProgressMessage) => {
+  if (message?.type === "ANALYZE_PROGRESS") widget.showProgress(message.text);
 });
 
 // Job boards like LinkedIn are SPAs — re-check after client-side navigations.

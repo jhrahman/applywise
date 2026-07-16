@@ -100,6 +100,15 @@ That's it. You're done with setup.
   out or is hit with a rate limit / high-demand error, Applywise automatically
   retries with another free Gemini model instead of failing the analysis —
   and updates your saved Setup page model to whichever one actually worked.
+  You'll see this happen live: the floating "Analyze" button updates in
+  real time ("gemini-3-flash-preview was busy — retrying with
+  gemini-flash-latest…") instead of just sitting on "Analyzing…" the whole
+  time.
+- **Extension update checks**: "Load unpacked" installs can't auto-update
+  (only Chrome Web Store/Firefox Add-ons installs can), so the extension
+  popup checks the latest deployed version on every open and shows a banner
+  — with a matching one on the Setup page — if yours is behind, so you're
+  never left guessing whether a re-download is needed after a push.
 
 ---
 
@@ -149,7 +158,12 @@ tested as part of this project — treat it as a starting point.
 ## Features
 
 - **Resume matching** — match score (0–100), matching/missing skills, missing
-  ATS keywords, ATS parseability notes, and concrete improvement suggestions
+  ATS keywords, ATS parseability notes, and concrete improvement suggestions.
+  Scoring follows an explicit enumerate-then-compute rubric (required/
+  preferred skill coverage + experience fit, weighted and combined by a fixed
+  formula) rather than a freeform "impression" score, so re-analyzing the
+  same resume against the same posting lands close to the same score instead
+  of swinging wildly between runs.
 - **Job details extraction** — employment type, work mode (remote/hybrid/
   onsite), location, company, and salary, read directly from the posting.
   Works across languages (a posting in Japanese or Bengali still gets a
@@ -166,10 +180,11 @@ tested as part of this project — treat it as a starting point.
 - **Multi-provider AI support** — Gemini, DeepSeek, GLM (Zhipu/Z.ai), OpenAI,
   Anthropic, and Grok (xAI), with free-tier/trial-credit options listed first
   and a custom-model-ID field as an escape hatch
-- **Automatic Gemini fallback** — timeouts, rate limits, and high-demand
-  errors trigger a silent retry against another free Gemini model, and the
-  model that actually succeeded is shown on the results page and saved back
-  to your settings
+- **Automatic Gemini fallback with live progress** — timeouts, rate limits,
+  and high-demand errors trigger a retry against another free Gemini model
+  (shown in real time on the floating "Analyze" button), and the model that
+  actually succeeded is shown on the results page and saved back to your
+  settings
 - **Interview prep** — up to 20 likely interview questions with suggested
   answers, generated on demand and cached so revisiting the page doesn't
   re-spend an API call
@@ -180,17 +195,22 @@ tested as part of this project — treat it as a starting point.
   job, and smooth remove/clear-all animations
 - **On/off toggle** — turn the floating "Analyze" button off globally from
   the extension popup
-- **One-click extension download** — the Setup page detects whether the
-  extension is installed and, if not, offers an always-current download
-  built fresh on every deploy
+- **One-click extension download + update checks** — the Setup page detects
+  whether the extension is installed and, if not, offers an always-current
+  download built fresh on every deploy; if it's installed but out of date,
+  both the popup and the Setup page flag it (unpacked installs can't
+  auto-update the way store-installed ones do)
 - **Cross-browser** — Chrome, Edge, Brave, and Firefox, via a shared
   `browser.*`/`chrome.*` compatibility layer
 
 ## Deferred (not in this build)
 
-- Chrome Web Store / Firefox Add-ons store listing (true one-click install —
-  currently a download + "Load unpacked" flow instead, since a webpage can't
-  silently install an extension)
+- **Chrome Web Store / Firefox Add-ons store listing** — the only way to get
+  a true one-click install and genuine silent auto-updates, but requires a
+  developer account (Chrome: $5 one-time fee) and a review process.
+  Deliberately not pursued right now; the download-zip + "Load unpacked"
+  flow plus the update-check banner (see [Features](#features)) is the
+  stand-in until that changes.
 - Cover letter generator
 - Manual per-site scraping overrides beyond the generic extractor
 - Cross-device history sync (would need accounts + a backend — contradicts
@@ -223,7 +243,16 @@ tested as part of this project — treat it as a starting point.
 - **Extension packaging.** `scripts/package-extension.mjs` builds the
   extension and zips it into `public/applywise-extension.zip` as part of
   `npm run build`, so every deploy (and thus every download from the Setup
-  page) ships the current source, never a stale snapshot.
+  page) ships the current source, never a stale snapshot. It also writes
+  `public/extension-version.json` from `extension/manifest.json`'s own
+  `version` field, which is what the popup checks against on every open (see
+  [extension/README.md](extension/README.md#version-bumps-and-the-update-check)).
+- **One-way progress channel.** While an analysis runs, the background
+  worker pushes `ANALYZE_PROGRESS` messages to the originating tab (which
+  model is being tried, whether a Gemini fallback kicked in) — a plain
+  `runtime.sendMessage`/`onMessage` push with no reply expected, separate
+  from the request/response messages (`ANALYZE`, `GET_RESUMES`, etc.) used
+  everywhere else.
 
 ## Project structure
 

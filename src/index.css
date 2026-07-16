@@ -3,6 +3,11 @@
 @theme {
   --font-sans: "Plus Jakarta Sans", ui-sans-serif, system-ui, sans-serif;
 
+  /* Extra breakpoint below Tailwind's default `sm` (640px) — used sparingly
+     to hide secondary labels (not core content) on genuinely narrow phones
+     without waiting until 640px to bring them back. */
+  --breakpoint-xs: 22rem;
+
   --color-ash-1: #3a3d42;
   --color-ash-2: #25272b;
   --color-ash-3: #16171a;
@@ -12,11 +17,17 @@
   --color-accent-2: #e8791a;
   --color-border-dark: #4a4d52;
 
-  --color-light-1: #f4f3f0;
-  --color-light-2: #ffffff;
-  --color-light-text: #1c1e21;
-  --color-light-text-dim: #6b6862;
-  --color-border-light: #dedad2;
+  /* Softened for long reading sessions — warm off-white instead of stark
+     white, and a warm charcoal instead of near-black text. Pure white +
+     near-black is the highest-contrast combination possible, which reads as
+     "crisp" for a glance but is genuinely tiring to stare at for minutes at
+     a time; industry guidance (Material, Apple HIG) both steer surface
+     colors and body text away from the extremes for exactly this reason. */
+  --color-light-1: #f2efe9;
+  --color-light-2: #faf8f4;
+  --color-light-text: #33312c;
+  --color-light-text-dim: #756e62;
+  --color-border-light: #e4ded2;
 }
 
 :root {

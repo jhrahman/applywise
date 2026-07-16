@@ -8,7 +8,7 @@ function App() {
     <HashRouter>
       <div className="flex min-h-screen flex-col">
         <Header />
-        <main className="mx-auto w-full flex-1 px-6 py-10 sm:px-8">
+        <main className="mx-auto w-full flex-1 px-4 py-6 sm:px-8 sm:py-10">
           <Routes>
             <Route path="/" element={<Setup />} />
             <Route path="/results" element={<Results />} />

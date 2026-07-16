@@ -159,15 +159,15 @@ function ScoreMeter({ score }: { score: number }) {
   const clamped = Math.max(0, Math.min(100, score));
   const band = scoreBand(clamped);
   return (
-    <div className="flex items-center gap-5">
+    <div className="flex flex-col gap-4 xs:flex-row xs:items-center xs:gap-5">
       <div className="flex items-baseline gap-1">
-        <span className="text-5xl font-bold tracking-tight tabular-nums" style={{ color: band.text }}>
+        <span className="text-4xl font-bold tracking-tight tabular-nums sm:text-5xl" style={{ color: band.text }}>
           {clamped}
         </span>
         <span className="text-lg font-semibold text-[var(--fg-dim)]">/100</span>
       </div>
-      <div className="flex-1">
-        <div className="mb-1.5 flex items-center justify-between">
+      <div className="min-w-0 flex-1">
+        <div className="mb-1.5 flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
           <span className="text-xs font-semibold uppercase tracking-wide text-[var(--fg-dim)]">Match score</span>
           <span className="text-xs font-semibold" style={{ color: band.text }}>
             {band.label}
@@ -355,7 +355,7 @@ function JobDetailsGrid({ job, jobDetails }: { job: JobPosting; jobDetails: JobD
   const location = job.location ?? jobDetails.location ?? "Not available";
 
   return (
-    <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+    <div className="grid grid-cols-1 gap-3 xs:grid-cols-2 sm:grid-cols-4">
       <DetailTile
         icon={<Briefcase size={12} />}
         label="Employment type"
@@ -430,8 +430,8 @@ function JobResultCard({
             Analyzed with {entry.modelUsed}
           </div>
         )}
-        <div className="flex items-start justify-between gap-4">
-          <div>
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div className="min-w-0">
             <CardTitle>{job.title}</CardTitle>
             <CardDescription>
               {headerCompany}
@@ -528,7 +528,7 @@ function InterviewQuestionsCard({
               {loading ? <Loader2 size={16} className="animate-spin" /> : <Sparkles size={16} />}
               {loading ? "Generating…" : "Generate interview questions"}
             </Button>
-            {error && <p className="mt-2 text-sm text-red-400">{error}</p>}
+            {error && <p className="mt-2 text-sm text-[var(--status-bad-text)]">{error}</p>}
           </div>
         )}
 
@@ -600,7 +600,7 @@ function SessionHistory({
               type="button"
               onClick={() => setConfirmingClear(true)}
               disabled={clearingAll || history.length === 0}
-              className="flex shrink-0 items-center gap-1 rounded-full border border-[var(--border)] px-2.5 py-1 text-xs font-medium text-[var(--fg-dim)] transition-colors hover:border-red-400/50 hover:text-red-400 disabled:pointer-events-none disabled:opacity-40"
+              className="flex shrink-0 items-center gap-1 rounded-full border border-[var(--border)] px-2.5 py-1 text-xs font-medium text-[var(--fg-dim)] transition-colors hover:border-[var(--status-bad-border)] hover:text-[var(--status-bad-text)] disabled:pointer-events-none disabled:opacity-40"
             >
               <Trash2 size={12} />
               Clear all
@@ -662,7 +662,7 @@ function SessionHistory({
                       handleRemove(e.id);
                     }}
                     aria-label={`Remove ${e.job.title} from history`}
-                    className="absolute right-2 top-1/2 -translate-y-1/2 rounded-full p-1 text-[var(--fg-dim)] opacity-0 transition-opacity hover:text-red-400 group-hover:opacity-100"
+                    className="absolute right-2 top-1/2 -translate-y-1/2 rounded-full p-1 text-[var(--fg-dim)] opacity-0 transition-opacity hover:text-[var(--status-bad-text)] group-hover:opacity-100"
                   >
                     <X size={14} />
                   </button>

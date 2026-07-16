@@ -7,7 +7,13 @@ import {
   matchAnalysisJsonSchema,
   matchAnalysisSchema,
 } from "./schema";
-import { assertOk, fetchWithTimeout, type AiClient } from "./client";
+import {
+  assertOk,
+  fetchWithTimeout,
+  INTERVIEW_QUESTIONS_TEMPERATURE,
+  MATCH_ANALYSIS_TEMPERATURE,
+  type AiClient,
+} from "./client";
 
 /**
  * Several providers (OpenAI itself, plus DeepSeek/GLM/xAI, all of which
@@ -27,11 +33,16 @@ export function createOpenAiCompatibleClient(options: {
 }): AiClient {
   const { baseUrl, apiKey, model, providerName, useJsonSchema = false } = options;
 
-  async function call(prompt: string, schemaName: string, jsonSchema: unknown): Promise<string> {
+  async function call(
+    prompt: string,
+    schemaName: string,
+    jsonSchema: unknown,
+    temperature: number
+  ): Promise<string> {
     const body: Record<string, unknown> = {
       model,
       messages: [{ role: "user", content: prompt }],
-      temperature: 0.4,
+      temperature,
     };
     if (useJsonSchema) {
       body.response_format = {
@@ -61,13 +72,18 @@ export function createOpenAiCompatibleClient(options: {
   return {
     async generateMatchAnalysis(resumeText: string, job: JobPosting): Promise<MatchAnalysis> {
       const prompt = buildMatchAnalysisPrompt(resumeText, job);
-      const text = await call(prompt, "match_analysis", matchAnalysisJsonSchema);
+      const text = await call(prompt, "match_analysis", matchAnalysisJsonSchema, MATCH_ANALYSIS_TEMPERATURE);
       return matchAnalysisSchema.parse(extractJsonPayload(text));
     },
 
     async generateInterviewQuestions(resumeText: string, job: JobPosting): Promise<InterviewQA[]> {
       const prompt = buildInterviewQuestionsPrompt(resumeText, job);
-      const text = await call(prompt, "interview_questions", interviewQuestionsJsonSchema);
+      const text = await call(
+        prompt,
+        "interview_questions",
+        interviewQuestionsJsonSchema,
+        INTERVIEW_QUESTIONS_TEMPERATURE
+      );
       return interviewQuestionsSchema.parse(extractJsonPayload(text));
     },
   };

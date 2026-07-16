@@ -2,6 +2,25 @@
 
 **Working name:** Applywise
 
+## Status
+
+This was the pre-build design doc — kept for the reasoning behind early
+decisions, but the [root README](README.md) is the source of truth for what
+Applywise actually does today. Phases 1–5 below are complete and live at
+[applywise-copilot.vercel.app](https://applywise-copilot.vercel.app/), plus a
+fair amount built past the original plan: multi-provider AI support (Gemini,
+DeepSeek, GLM, OpenAI, Anthropic, Grok/xAI, not just Gemini+one paid
+provider), automatic Gemini model fallback with live progress shown on the
+floating button, a deterministic scoring rubric (see
+[AI workflow](#ai-workflow) below — this replaced an earlier freeform-score
+approach after it proved inconsistent run-to-run), salary/location/work-mode
+extraction with BDT conversion, a one-click extension-download flow with
+update checks, and session history with per-job status tracking. The
+"day one" CORS risk noted below was validated early and never became an
+issue — all AI calls run from the extension's background service worker,
+which isn't subject to a webpage's CORS restrictions, so the serverless
+fallback mentioned there was never needed.
+
 ## Goal
 
 A client-side job-match tool: upload up to 3 resumes, browse job postings, click
@@ -62,7 +81,7 @@ No fetch to any Applywise-owned server happens at any point in this flow.
 | Web app | Static React/Vite (or Next.js static export) — no server runtime needed |
 | Styling | Tailwind CSS + shadcn/ui |
 | State/persistence | `chrome.storage.local` (extension) + `IndexedDB` (web app, if needed for larger session data) |
-| AI | Gemini API (free tier, default) — user can add their own key for another provider (OpenAI/Anthropic) and pick a model |
+| AI | Gemini API (free tier, default) — user can add their own key for another provider and pick a model. Shipped with six: Gemini, DeepSeek, GLM, OpenAI, Anthropic, Grok (xAI) |
 | Extension | Chrome Extension, Manifest V3, any job site via generic extractor |
 | Hosting | Vercel (free tier), static export — no server runtime needed |
 
@@ -126,11 +145,13 @@ That's the whole web app — 2 pages.
 
 **Theme**
 - Default: dark ash — a charcoal-to-near-black gradient background
-  (`#3a3d42 → #25272b → #16171a`), soft off-white text (`#e7e5e0`), teal
-  accent (`#5dcaa5 → #1d9e75`) for interactive elements and the match
-  checkmark motif
+  (`#3a3d42 → #25272b → #16171a`), soft off-white text (`#e7e5e0`). Accent
+  color shipped as amber/orange (`#f5a623 → #e8791a`) rather than the teal
+  originally planned here — chosen to read as "job search" without leaning
+  on the green/violet colors common in this space (see git history for the
+  actual color-selection conversation).
 - Light mode: toggle available, warm off-white background (`#f4f3f0 →
-  #ffffff`), same teal accent for continuity
+  #ffffff`), same amber accent for continuity
 - Theme preference stored client-side (`localStorage` for the web app,
   `chrome.storage.local` for the extension) — persists across sessions,
   no server involved
@@ -138,7 +159,7 @@ That's the whole web app — 2 pages.
   reads soft without losing a professional edge; weights 400/500/600/700
 
 **Logo**
-- A monogram interlocking A and W into a single mark, with a small teal
+- A monogram interlocking A and W into a single mark, with a small amber
   checkmark badge referencing the "match" concept — see
   `applywise-logo.svg`. Used in the extension icon, the web app header,
   and the extension popup.
@@ -146,11 +167,15 @@ That's the whole web app — 2 pages.
 **Analyzing animation**
 - Every AI action (scraping, sending to the model, parsing the result)
   gets a visible state, not a blank wait: a pulsing accent dot next to a
-  short status line ("Scanning job description," "Comparing with your
-  resume"), a sweeping progress bar in the teal accent gradient, and
-  results revealing one row at a time as they resolve, rather than
+  short status line, a sweeping progress bar in the amber accent gradient,
+  and results revealing one row at a time as they resolve, rather than
   popping in all at once. See `applywise-theme-preview.html` for a working
-  reference of the gradient, toggle, and animation together.
+  reference of the gradient, toggle, and animation together. Built out
+  further than originally planned: the floating "Analyze" button now shows
+  *real* backend status pushed live from the background service worker
+  (which AI model is being tried, whether a fallback kicked in), not just a
+  simulated status-line cycle — see the root README's
+  [Architecture](README.md#architecture) section.
 
 
 ## AI workflow
@@ -162,7 +187,15 @@ That's the whole web app — 2 pages.
 4. Extension sends resume text + job description to the AI provider,
    wrapped with clear delimiters so scraped job text is treated as data,
    not instructions (prompt-injection hygiene — job descriptions are
-   untrusted scraped content).
+   untrusted scraped content). The match-score prompt spells out an
+   explicit enumerate-required-items → check-each-against-resume →
+   compute-a-weighted-formula procedure (not "give it a fit score"), run at
+   a low sampling temperature — a freeform score swung by tens of points
+   between identical runs in practice, which this fixed once diagnosed.
+   If the model/provider is Gemini and the call times out or hits a
+   rate-limit/high-load error, the extension automatically retries against
+   another free Gemini model rather than failing outright, and the
+   floating button shows which model is being tried in real time.
 5. Structured JSON result written to local storage, results tab opens.
 6. Optionally, user clicks "Generate interview questions" on the results
    page — a second AI call using the same job description + resume,
@@ -206,13 +239,19 @@ That's the whole web app — 2 pages.
 **Phase 5 — Deploy + demo**
 - Push the web app to a GitHub repo, connect it to Vercel (free tier) —
   Vercel auto-deploys on every push to the main branch, no manual deploy
-  step needed after the initial connection
-- Package and load the extension unpacked for demo (Chrome Web Store
-  publishing is optional, $5 one-time fee if you want it listed)
+  step needed after the initial connection. Done — live at
+  [applywise-copilot.vercel.app](https://applywise-copilot.vercel.app/).
+- Package the extension as a downloadable zip built fresh on every deploy,
+  with a Setup-page install card and an update-check banner for existing
+  installs, instead of unpacked-only. Chrome Web Store publishing (the $5
+  one-time fee, true one-click install + real auto-updates) is explicitly
+  **not** happening at this stage — revisit later if it's worth it.
 - README, screenshots, short walkthrough video/GIF
 
 ## Deferred (not in this build)
 
+- Chrome Web Store / Firefox Add-ons store listing — see Phase 5 above;
+  declined for now on cost/effort grounds, not a technical blocker
 - Cover letter generator
 - Manual per-site scraping overrides beyond the generic extractor (add
   only for boards you personally use often and that fail JSON-LD/heuristic)

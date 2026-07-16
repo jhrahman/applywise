@@ -5,11 +5,22 @@ import {
   interviewQuestionsSchema,
   matchAnalysisSchema,
 } from "./schema";
-import { assertOk, fetchWithTimeout, type AiClient } from "./client";
+import {
+  assertOk,
+  fetchWithTimeout,
+  INTERVIEW_QUESTIONS_TEMPERATURE,
+  MATCH_ANALYSIS_TEMPERATURE,
+  type AiClient,
+} from "./client";
 
 const URL_ = "https://api.anthropic.com/v1/messages";
 
-async function callAnthropic(apiKey: string, model: string, prompt: string): Promise<string> {
+async function callAnthropic(
+  apiKey: string,
+  model: string,
+  prompt: string,
+  temperature: number
+): Promise<string> {
   const response = await fetchWithTimeout(URL_, {
     method: "POST",
     headers: {
@@ -24,7 +35,7 @@ async function callAnthropic(apiKey: string, model: string, prompt: string): Pro
     body: JSON.stringify({
       model,
       max_tokens: 4096,
-      temperature: 0.4,
+      temperature,
       messages: [{ role: "user", content: prompt }],
     }),
   });
@@ -42,13 +53,13 @@ export function createAnthropicClient(apiKey: string, model: string): AiClient {
   return {
     async generateMatchAnalysis(resumeText: string, job: JobPosting): Promise<MatchAnalysis> {
       const prompt = buildMatchAnalysisPrompt(resumeText, job);
-      const text = await callAnthropic(apiKey, model, prompt);
+      const text = await callAnthropic(apiKey, model, prompt, MATCH_ANALYSIS_TEMPERATURE);
       return matchAnalysisSchema.parse(extractJsonPayload(text));
     },
 
     async generateInterviewQuestions(resumeText: string, job: JobPosting): Promise<InterviewQA[]> {
       const prompt = buildInterviewQuestionsPrompt(resumeText, job);
-      const text = await callAnthropic(apiKey, model, prompt);
+      const text = await callAnthropic(apiKey, model, prompt, INTERVIEW_QUESTIONS_TEMPERATURE);
       return interviewQuestionsSchema.parse(extractJsonPayload(text));
     },
   };

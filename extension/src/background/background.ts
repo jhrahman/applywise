@@ -8,18 +8,19 @@ import type {
   ExtensionMessage,
   GetResumesResponse,
   AnalyzeResponse,
+  AnalyzeProgressMessage,
   GenerateInterviewQuestionsResponse,
 } from "../lib/messages";
 
 const DEFAULT_SETTINGS: ProviderSettings = { provider: "gemini", apiKey: "", model: "gemini-3-flash-preview" };
 
-browserApi.runtime.onMessage.addListener((message: ExtensionMessage, _sender, sendResponse) => {
+browserApi.runtime.onMessage.addListener((message: ExtensionMessage, sender, sendResponse) => {
   if (message.type === "GET_RESUMES") {
     handleGetResumes().then(sendResponse);
     return true;
   }
   if (message.type === "ANALYZE") {
-    handleAnalyze(message.resumeId, message.job).then(sendResponse);
+    handleAnalyze(message.resumeId, message.job, sender.tab?.id).then(sendResponse);
     return true;
   }
   if (message.type === "GENERATE_INTERVIEW_QUESTIONS") {
@@ -29,17 +30,29 @@ browserApi.runtime.onMessage.addListener((message: ExtensionMessage, _sender, se
   return false;
 });
 
+/** Pushes a one-way status update to the tab that triggered the analysis — best-effort, never blocks on failure. */
+function sendProgress(tabId: number | undefined, text: string): void {
+  if (tabId == null) return;
+  const message: AnalyzeProgressMessage = { type: "ANALYZE_PROGRESS", text };
+  browserApi.tabs.sendMessage(tabId, message).catch(() => {});
+}
+
 /**
  * Runs `attempt` with the configured model first; on a timeout/429/high-load
  * error from Gemini, retries with the next free-tier model instead of
  * failing the whole request. Other providers (and non-retryable errors, e.g.
  * a bad API key) just run once, since switching models can't fix those.
+ * `onAttempt` fires before every attempt (including the first) so the caller
+ * can surface live progress — which model is being tried, and whether this
+ * is a fresh attempt or a fallback after the previous one failed.
  */
 async function withGeminiFallback<T>(
   settings: ProviderSettings,
-  attempt: (settings: ProviderSettings) => Promise<T>
+  attempt: (settings: ProviderSettings) => Promise<T>,
+  onAttempt?: (model: string, previousModel: string | null) => void
 ): Promise<{ result: T; modelUsed: string }> {
   if (settings.provider !== "gemini") {
+    onAttempt?.(settings.model, null);
     return { result: await attempt(settings), modelUsed: settings.model };
   }
 
@@ -47,6 +60,7 @@ async function withGeminiFallback<T>(
   let lastErr: unknown;
   for (let i = 0; i < order.length; i++) {
     const model = order[i];
+    onAttempt?.(model, i > 0 ? order[i - 1] : null);
     try {
       const result = await attempt({ ...settings, model });
       return { result, modelUsed: model };
@@ -84,7 +98,11 @@ async function handleGetResumes(): Promise<GetResumesResponse> {
   };
 }
 
-async function handleAnalyze(resumeId: string, job: JobPosting): Promise<AnalyzeResponse> {
+async function handleAnalyze(
+  resumeId: string,
+  job: JobPosting,
+  tabId?: number
+): Promise<AnalyzeResponse> {
   const [resumes, settings] = await Promise.all([
     getItem<Resume[]>(STORAGE_KEYS.resumes, []),
     getItem<ProviderSettings>(STORAGE_KEYS.providerSettings, DEFAULT_SETTINGS),
@@ -97,8 +115,17 @@ async function handleAnalyze(resumeId: string, job: JobPosting): Promise<Analyze
   let analysis;
   let modelUsed = settings.model;
   try {
-    const result = await withGeminiFallback(settings, (s) =>
-      getAiClient(s).generateMatchAnalysis(resume.parsedText, job)
+    const result = await withGeminiFallback(
+      settings,
+      (s) => getAiClient(s).generateMatchAnalysis(resume.parsedText, job),
+      (model, previousModel) => {
+        sendProgress(
+          tabId,
+          previousModel
+            ? `${previousModel} was busy — retrying with ${model}…`
+            : `Analyzing with ${model}…`
+        );
+      }
     );
     analysis = result.result;
     modelUsed = result.modelUsed;
@@ -106,6 +133,8 @@ async function handleAnalyze(resumeId: string, job: JobPosting): Promise<Analyze
   } catch (err) {
     return { ok: false, error: describeAiError(err) };
   }
+
+  sendProgress(tabId, "Finalizing your results…");
 
   const entry: JobEntry = {
     id: crypto.randomUUID(),

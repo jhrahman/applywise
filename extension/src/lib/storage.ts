@@ -16,4 +16,5 @@ export const STORAGE_KEYS = {
   theme: "applywise:theme",
   jobHistory: "applywise:jobHistory",
   enabled: "applywise:enabled",
+  updateAvailable: "applywise:updateAvailable",
 } as const;

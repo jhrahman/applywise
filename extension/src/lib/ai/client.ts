@@ -7,6 +7,21 @@ export interface AiClient {
 
 export class AiRequestError extends Error {}
 
+// Match scoring should behave like a computation over the resume/posting
+// text, not a creative task — a low temperature minimizes sampling noise so
+// re-analyzing the same resume against the same posting gives (close to) the
+// same score. Interview questions benefit from more variety, so they keep a
+// higher temperature.
+export const MATCH_ANALYSIS_TEMPERATURE = 0.1;
+export const INTERVIEW_QUESTIONS_TEMPERATURE = 0.5;
+
+// Gemini match analysis can fall back across several models (see
+// gemini-fallback.ts) — a shorter per-attempt timeout means a stuck/
+// overloaded model gets abandoned for the next one sooner instead of eating
+// most of a 30s wait every single retry. Other providers/calls keep
+// fetchWithTimeout's default since they have no fallback to fall through to.
+export const MATCH_ANALYSIS_TIMEOUT_MS = 15_000;
+
 export async function fetchWithTimeout(
   input: string,
   init: RequestInit,

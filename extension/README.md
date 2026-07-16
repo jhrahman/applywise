@@ -37,6 +37,37 @@ Then load `extension/dist` as an unpacked extension via
 URL before shipping, and also update the `app-bridge.js` `matches` array in
 `manifest.json` to include that same production origin).
 
+## Version bumps and the update check
+
+"Load unpacked" installs never auto-update — that's only available to
+extensions installed from the Chrome Web Store / Firefox Add-ons, which
+isn't where this ships from (see root README's
+[Deferred](../README.md#deferred-not-in-this-build) section for why). To
+make that less painful, every deploy publishes `public/extension-version.json`
+(written by `scripts/package-extension.mjs` from this file's own `version`
+field), and the popup fetches it on every open, comparing it against
+`chrome.runtime.getManifest().version`. A mismatch shows an "update
+available" banner in the popup and on the Setup page.
+
+**This means `manifest.json`'s `version` needs a bump whenever you change
+anything under `extension/`** — otherwise an installed copy that's actually
+stale won't know it. Web-app-only changes (`src/` at the repo root) don't
+need a bump; they take effect the moment Vercel redeploys, no extension
+action required.
+
+## Live progress during analysis
+
+The floating "Analyze" button doesn't just say "Analyzing…" for the whole
+request — `background.ts` pushes one-way `ANALYZE_PROGRESS` messages to the
+originating tab as the analysis proceeds (which model is being tried, and
+"X was busy — retrying with Y…" if a Gemini fallback kicks in — see
+`withGeminiFallback`'s `onAttempt` callback). `content-script.ts` listens for
+these via a plain `runtime.onMessage` listener (distinct from the
+request/response `sendMessage()` calls used elsewhere) and fades in the new
+text via `ApplywiseWidget.showProgress()`. A local interval-based "heartbeat"
+covers the brief gap before the first real message arrives, then gets
+cleared the moment one does.
+
 ## Web app ⇄ extension bridge
 
 The web app runs on its own origin (localhost in dev, Vercel in prod) and

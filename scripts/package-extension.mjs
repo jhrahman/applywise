@@ -3,7 +3,7 @@
 // last pushed — this runs as part of `npm run build`, so a fresh zip is
 // produced on every Vercel deploy, never a stale one baked in ahead of time.
 import { execSync } from "node:child_process";
-import { createWriteStream, existsSync, mkdirSync, rmSync } from "node:fs";
+import { createWriteStream, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
 import { ZipArchive } from "archiver";
@@ -13,6 +13,7 @@ const extensionDir = path.join(rootDir, "extension");
 const extensionDistDir = path.join(extensionDir, "dist");
 const publicDir = path.join(rootDir, "public");
 const zipPath = path.join(publicDir, "applywise-extension.zip");
+const versionPath = path.join(publicDir, "extension-version.json");
 
 function run(command, cwd) {
   console.log(`$ ${command}`);
@@ -45,5 +46,13 @@ await new Promise((resolve, reject) => {
   archive.directory(extensionDistDir, "applywise-extension");
   archive.finalize();
 });
+
+// Loaded unpacked extensions can't auto-update — Chrome/Edge/Firefox only do
+// that for store-installed ones. This lets an already-installed extension
+// self-check against the latest deployed version and tell the user a
+// re-download is actually needed, instead of them guessing after every push.
+const manifest = JSON.parse(readFileSync(path.join(extensionDir, "manifest.json"), "utf8"));
+writeFileSync(versionPath, JSON.stringify({ version: manifest.version }));
+console.log(`Wrote ${path.relative(rootDir, versionPath)} (v${manifest.version})`);
 
 console.log(`Packaged extension -> ${path.relative(rootDir, zipPath)}`);

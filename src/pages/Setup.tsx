@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { Trash2, Upload, Loader2, CheckCircle2, Download, Puzzle } from "lucide-react";
+import { Trash2, Upload, Loader2, CheckCircle2, Download, Puzzle, RefreshCw, Monitor } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -82,10 +82,16 @@ export function Setup() {
   const [saveError, setSaveError] = useState<string | null>(null);
   const [loaded, setLoaded] = useState(false);
   const [extensionInstalled, setExtensionInstalled] = useState<boolean | null>(null);
+  const [updateAvailable, setUpdateAvailable] = useState<{ latestVersion: string } | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
-    isExtensionAvailable().then(setExtensionInstalled);
+    isExtensionAvailable().then((available) => {
+      setExtensionInstalled(available);
+      if (available) {
+        getItem<{ latestVersion: string } | null>(STORAGE_KEYS.updateAvailable, null).then(setUpdateAvailable);
+      }
+    });
   }, []);
 
   useEffect(() => {
@@ -180,9 +186,16 @@ export function Setup() {
         <p className="text-sm text-[var(--fg-dim)]">
           Everything below stays in your browser — nothing is uploaded to a server.
         </p>
+        <div className="mt-3 inline-flex items-center gap-1.5 rounded-full border border-[var(--border)] px-3 py-1 text-xs font-medium text-[var(--fg-dim)]">
+          <Monitor size={13} className="shrink-0 text-accent-1" />
+          Best experienced on a desktop browser — that's where the extension lives.
+        </div>
       </div>
 
       {extensionInstalled === false && <InstallExtensionCard />}
+      {extensionInstalled === true && updateAvailable && (
+        <UpdateAvailableCard latestVersion={updateAvailable.latestVersion} />
+      )}
 
       <Card>
         <CardHeader>
@@ -199,13 +212,13 @@ export function Setup() {
               className="flex items-center gap-3 rounded-lg border border-[var(--border)] px-4 py-3"
             >
               <CheckCircle2 size={16} className="shrink-0 text-accent-1" />
-              <div className="flex flex-1 flex-col gap-1">
+              <div className="flex min-w-0 flex-1 flex-col gap-1">
                 <Input
                   value={resume.profileName}
                   onChange={(e) => handleRename(resume.id, e.target.value)}
                   className="h-8 max-w-xs"
                 />
-                <span className="text-xs text-[var(--fg-dim)]">{resume.fileName}</span>
+                <span className="truncate text-xs text-[var(--fg-dim)]">{resume.fileName}</span>
               </div>
               <Button variant="ghost" size="icon" onClick={() => handleDelete(resume.id)}>
                 <Trash2 size={16} />
@@ -236,7 +249,7 @@ export function Setup() {
               </Button>
             </div>
           )}
-          {uploadError && <p className="text-sm text-red-400">{uploadError}</p>}
+          {uploadError && <p className="text-sm text-[var(--status-bad-text)]">{uploadError}</p>}
         </CardContent>
       </Card>
 
@@ -322,7 +335,7 @@ export function Setup() {
               </span>
             )}
           </div>
-          {saveError && <p className="text-sm text-red-400">{saveError}</p>}
+          {saveError && <p className="text-sm text-[var(--status-bad-text)]">{saveError}</p>}
         </CardContent>
       </Card>
     </div>
@@ -378,6 +391,49 @@ function InstallExtensionCard() {
           Using Firefox? Open <code>about:debugging#/runtime/this-firefox</code> instead, click{" "}
           <strong>Load Temporary Add-on</strong>, and select{" "}
           <code>manifest.json</code> inside the unzipped folder.
+        </p>
+      </CardContent>
+    </Card>
+  );
+}
+
+// "Load unpacked" extensions never auto-update (only Chrome Web Store/Firefox
+// Add-ons installs do), so the popup checks a version file on every open and
+// flags a mismatch here — this is the closest thing to a nudge that a
+// re-download is actually needed, instead of the user guessing after every
+// push that touches extension/ code.
+function UpdateAvailableCard({ latestVersion }: { latestVersion: string }) {
+  return (
+    <Card
+      className="border-accent-1/40"
+      style={{ backgroundColor: "var(--status-warn-bg)" }}
+    >
+      <CardHeader>
+        <div className="flex items-start gap-3">
+          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-accent-1/15 text-accent-1">
+            <RefreshCw size={18} />
+          </div>
+          <div>
+            <CardTitle>Extension update available</CardTitle>
+            <CardDescription>
+              Version {latestVersion} is live, but your installed extension is older. Unpacked
+              installs don't auto-update — download the latest build and reload it to pick up
+              recent fixes.
+            </CardDescription>
+          </div>
+        </div>
+      </CardHeader>
+      <CardContent>
+        <a href="/applywise-extension.zip" download className="w-fit">
+          <Button>
+            <Download size={16} />
+            Download latest extension (.zip)
+          </Button>
+        </a>
+        <p className="mt-3 text-xs text-[var(--fg-dim)]">
+          After unzipping, reload it at your browser's extensions page (
+          <code>chrome://extensions</code>) using the reload icon on the Applywise card, or
+          re-run "Load unpacked" pointing at the new folder.
         </p>
       </CardContent>
     </Card>
