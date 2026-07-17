@@ -2,6 +2,7 @@ import { getItem, setItem, STORAGE_KEYS } from "../lib/storage";
 import { APP_URL } from "../lib/config";
 import { browserApi } from "../lib/browser-api";
 import { isUpdateAvailable } from "../lib/version";
+import { getProviderApiKey } from "../lib/types";
 import type { Resume, ProviderSettings } from "../lib/types";
 
 const DEFAULT_SETTINGS: ProviderSettings = { provider: "gemini", apiKey: "", model: "gemini-3-flash-preview" };
@@ -53,7 +54,7 @@ async function render() {
   resumeCountEl.textContent = `${resumes.length} / 3`;
 
   const apiKeyEl = document.getElementById("api-key-status")!;
-  if (settings.apiKey) {
+  if (getProviderApiKey(settings)) {
     apiKeyEl.textContent = "Connected";
     apiKeyEl.className = "ok";
   } else {

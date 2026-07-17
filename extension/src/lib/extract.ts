@@ -181,6 +181,48 @@ function richTextFrom(el: Element): string {
     .trim();
 }
 
+// Page chrome that gets swept into a widened container but is never part of the
+// posting: site footers, nav bars, and non-rendered nodes. Stripped from the
+// extracted subtree before reading its text so junk like bdjobs' "Download
+// Employer App / Our Valuable Partners" footer (an <app-footer> custom element
+// with class "footer-component", no semantic <footer> tag) doesn't reach the
+// AI. Deliberately does NOT strip <header>/<aside>: some aggregators render the
+// salary/location/company overview box in one of those, and widenElement pulls
+// it in on purpose.
+const NON_CONTENT_SELECTORS = [
+  "script",
+  "style",
+  "noscript",
+  "template",
+  "svg",
+  "footer",
+  "nav",
+  "app-footer",
+  "app-header",
+  "app-navbar",
+  '[class*="footer"]',
+  '[id*="footer"]',
+  '[class*="navbar"]',
+  '[class*="site-header"]',
+  '[class*="mega-menu"]',
+  '[class*="cookie"]',
+  '[role="contentinfo"]',
+  '[role="navigation"]',
+  '[role="banner"]',
+].join(",");
+
+/**
+ * Reads an element's rich text with page chrome removed. Clones first so the
+ * live page is never mutated, then drops non-content descendants (footers, nav,
+ * scripts) before extracting — otherwise a container that legitimately holds
+ * the description but also nests the site footer sends that footer to the AI.
+ */
+function richContentOf(el: Element): string {
+  const clone = el.cloneNode(true) as Element;
+  for (const junk of clone.querySelectorAll(NON_CONTENT_SELECTORS)) junk.remove();
+  return richTextFrom(clone);
+}
+
 // Cap for widening: a real single job description (plus a small overview
 // box) doesn't run past ~20k characters; past that it's almost certainly a
 // container that swept in a job list or other unrelated page content.
@@ -262,11 +304,11 @@ function largestMatch(selector: string): Element | null {
 function extractHeuristic(): JobPosting | null {
   for (const selector of PRECISE_DESCRIPTION_SELECTORS) {
     const el = largestMatch(selector);
-    if (el && textFrom(el).length > 200) return buildResult(richTextFrom(widenElement(el)));
+    if (el && textFrom(el).length > 200) return buildResult(richContentOf(widenElement(el)));
   }
 
   const byHeading = findByHeadingText();
-  if (byHeading) return buildResult(richTextFrom(widenElement(byHeading)));
+  if (byHeading) return buildResult(richContentOf(widenElement(byHeading)));
 
   let best: Element | null = null;
   let bestLen = 0;
@@ -282,7 +324,7 @@ function extractHeuristic(): JobPosting | null {
       }
     }
   }
-  if (best) return buildResult(richTextFrom(widenElement(best)));
+  if (best) return buildResult(richContentOf(widenElement(best)));
 
   // Last resort: the largest small-ish <div>/<section>/<main> text block.
   for (const el of document.querySelectorAll("div, section, main")) {
@@ -294,7 +336,7 @@ function extractHeuristic(): JobPosting | null {
     }
   }
 
-  return best ? buildResult(richTextFrom(widenElement(best))) : null;
+  return best ? buildResult(richContentOf(widenElement(best))) : null;
 }
 
 function buildResult(rawText: string): JobPosting {
@@ -326,12 +368,33 @@ const SKILL_CHIP_SELECTORS = [
   '[data-testid*="skill"]',
 ];
 
+// Words that mark an element as page furniture (a button/heading/link), not a
+// skill — bdjobs' Angular rebuild applies its "apphighlight" directive far
+// beyond skill pills (headings, action buttons), so without this the "Required
+// skills" line fills up with "Apply Online", "See more", and section titles.
+const NON_SKILL_LABEL =
+  /^(apply|apply online|login|log in|sign up|register|see (more|less|details)|view( all| details)?|show (more|less)|read more|more|details|next|previous|back|home|save|share|report|print)$/i;
+
+function isSkillChip(el: Element): boolean {
+  const text = textFrom(el);
+  // A real skill pill is short, self-contained inline text — not a heading, not
+  // a block container that happens to carry the directive, not an action word.
+  if (!text || text.length < 2 || text.length > 40) return false;
+  if (/^H[1-6]$/.test(el.tagName)) return false;
+  if (NON_SKILL_LABEL.test(text.trim())) return false;
+  // Containers (elements nesting block-level children) are description
+  // sections, not chips — skip them so we don't fold a whole paragraph in.
+  for (const child of el.children) {
+    if (BLOCK_TAGS.has(child.tagName)) return false;
+  }
+  return true;
+}
+
 function extractSkillChips(): string[] {
   const seen = new Set<string>();
   for (const selector of SKILL_CHIP_SELECTORS) {
     for (const el of document.querySelectorAll(selector)) {
-      const text = textFrom(el);
-      if (text && text.length < 60) seen.add(text);
+      if (isSkillChip(el)) seen.add(textFrom(el).trim());
     }
   }
   return [...seen];
@@ -446,6 +509,139 @@ function mergeExtractions(jsonLd: JobPosting | null, heuristic: JobPosting | nul
     company: realCompany ?? richer.company,
     location: jsonLd.location ?? richer.location,
   };
+}
+
+// --- Pre-extraction DOM preparation ------------------------------------------
+//
+// Many boards render the job body lazily (content mounts only once scrolled
+// into view) and/or truncate it behind a "see more"/"show more" control. Both
+// are why a click from the top of an untouched page saw only a thin preview,
+// while manually scrolling top-to-bottom first made the analysis work — the
+// scroll was doing the extractor's job by hand. prepareJobDom() does that work
+// programmatically before extraction: it hydrates lazy content with a quick,
+// self-restoring scroll sweep, clicks in-place expanders, and waits for the DOM
+// to settle. The user never has to touch the page.
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+// In-place expanders read "see more" / "show more" / "read more" / "view full
+// description" / "…more" — never "see less" (that would re-collapse what we
+// just opened), and short enough to exclude prose that merely contains "more".
+const EXPANDER_LABEL =
+  /^(?:\.{3}|…)?\s*(?:see|show|read|view)\s+(?:more|full|the full)(?:\s+description)?\s*$|^(?:\.{3}|…)\s*more$|^more$/i;
+
+/** Clicks in-place "see more"-style expanders within `scope`, returning how many fired. */
+function clickExpanders(scope: ParentNode): number {
+  let clicked = 0;
+  const candidates = scope.querySelectorAll<HTMLElement>(
+    'button, [role="button"], [aria-expanded="false"], [class*="see-more"], [class*="show-more"], [class*="read-more"]'
+  );
+  for (const el of candidates) {
+    // A real navigation link (has an href, isn't acting as a button) would
+    // take the user off the page — never click those.
+    if (el instanceof HTMLAnchorElement && el.href && el.getAttribute("role") !== "button") continue;
+
+    const label = (el.textContent || "").replace(/\s+/g, " ").trim();
+    const isExpander = el.getAttribute("aria-expanded") === "false" || EXPANDER_LABEL.test(label);
+    if (!isExpander) continue;
+
+    try {
+      el.click();
+      clicked++;
+    } catch {
+      // A detached or disabled node — nothing to do, keep going.
+    }
+  }
+  return clicked;
+}
+
+/** The containers the description is likely to live in — where expanders worth clicking sit. */
+function descriptionScopes(): ParentNode[] {
+  const scopes = new Set<ParentNode>();
+  for (const selector of PRECISE_DESCRIPTION_SELECTORS) {
+    for (const el of document.querySelectorAll(selector)) {
+      // The expander is often a sibling of the description body, so scope to a
+      // nearby block container rather than the body element itself.
+      scopes.add(el.closest("section, article, main, form") ?? el.parentElement ?? el);
+    }
+  }
+  const byHeading = findByHeadingText();
+  if (byHeading?.parentElement) scopes.add(byHeading.parentElement);
+  // Fall back to the whole document only when nothing specific matched, so a
+  // page that uses none of our selectors still gets its expanders clicked.
+  if (scopes.size === 0) scopes.add(document.body);
+  return [...scopes];
+}
+
+/**
+ * Waits until the DOM stops mutating for `quietMs`, or `maxWaitMs` elapses —
+ * whichever comes first. Lets lazily-hydrated content and just-expanded
+ * sections finish rendering before we read the text.
+ */
+function waitForDomToSettle(quietMs = 250, maxWaitMs = 1500): Promise<void> {
+  return new Promise((resolve) => {
+    let quietTimer = setTimeout(finish, quietMs);
+    const observer = new MutationObserver(() => {
+      clearTimeout(quietTimer);
+      quietTimer = setTimeout(finish, quietMs);
+    });
+    observer.observe(document.body, { childList: true, subtree: true, characterData: true });
+    const hardStop = setTimeout(finish, maxWaitMs);
+
+    function finish() {
+      clearTimeout(quietTimer);
+      clearTimeout(hardStop);
+      observer.disconnect();
+      resolve();
+    }
+  });
+}
+
+/**
+ * Hydrates lazy content by scrolling through the document once and restoring
+ * the original position. Boards that mount the description (or parts of it) via
+ * an IntersectionObserver only render it after it enters the viewport — this
+ * makes that happen without the user seeing (or doing) the scroll.
+ */
+async function hydrateLazyContent(): Promise<void> {
+  const startX = window.scrollX;
+  const startY = window.scrollY;
+  const step = Math.max(400, Math.floor(window.innerHeight * 0.85));
+  const maxHeight = document.documentElement.scrollHeight;
+
+  for (let y = 0; y < maxHeight; y += step) {
+    window.scrollTo(0, y);
+    await sleep(50);
+  }
+  window.scrollTo(0, maxHeight);
+  await sleep(60);
+  window.scrollTo(startX, startY);
+}
+
+/**
+ * Prepares the page so a single extraction reads the *full* posting: hydrate
+ * lazy content, click any "see more" expanders (a few passes, since expanding
+ * one section can reveal another), and wait for the DOM to settle. Best-effort
+ * throughout — any failure just means extraction proceeds on whatever is
+ * already there, exactly as before.
+ */
+export async function prepareJobDom(): Promise<void> {
+  try {
+    await hydrateLazyContent();
+
+    for (let pass = 0; pass < 3; pass++) {
+      let clicked = 0;
+      for (const scope of descriptionScopes()) clicked += clickExpanders(scope);
+      if (clicked === 0) break;
+      await waitForDomToSettle();
+    }
+
+    await waitForDomToSettle();
+  } catch {
+    // Never let DOM prep block an analysis — fall through to extraction.
+  }
 }
 
 export function extractJobPosting(): JobPosting | null {

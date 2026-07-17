@@ -76,8 +76,10 @@ Back on [applywise-copilot.vercel.app](https://applywise-copilot.vercel.app/)
 
 Go to any job posting (LinkedIn, bdjobs, Indeed, a company careers page, etc.)
 and look for the **"Analyze with Applywise"** button in the bottom-right
-corner of the page. Click it — after a few seconds a new tab opens with your
-match score, skills breakdown, and job details.
+corner of the page. Click it right away — no need to scroll down the page or
+click any "see more"/"show more" description toggle first, the extension
+handles that for you. After a few seconds a new tab opens with your match
+score, skills breakdown, and job details.
 
 That's it. You're done with setup.
 
@@ -101,7 +103,9 @@ That's it. You're done with setup.
 - **Switching AI providers**: on the Setup page, pick from Gemini, OpenRouter,
   DeepSeek, GLM, OpenAI, Anthropic, or Grok (xAI) — free-tier/trial options are
   listed first. Each has its own API key and model list; a "Custom model ID"
-  field is always available if a provider retires a model.
+  field is always available if a provider retires a model. Each provider
+  remembers its own API key — switch providers and back, and the key you
+  already saved for it is still there, no re-entering required.
 - **Auto-fallback to other free models**: a single toggle in the **AI provider**
   card. When it's on and your selected model times out or hits a rate limit /
   high-demand error, Applywise works down the free models — strongest first,
@@ -179,17 +183,25 @@ tested as part of this project — treat it as a starting point.
   preferred skill coverage + experience fit, weighted and combined by a fixed
   formula) rather than a freeform "impression" score, so re-analyzing the
   same resume against the same posting lands close to the same score instead
-  of swinging wildly between runs.
-- **Robust job posting extraction** — the title, company, location, and full
-  description are read from the page with several safeguards: text structure
-  (`<br>`/`<li>`/`<p>` boundaries) is preserved so labels stay attached to
-  their values, the *largest* real description block is chosen (not whichever
-  markup comes first), JSON-LD and DOM sources are merged for the richest
-  result, and — importantly for single-page-app boards like LinkedIn — the
-  posting is re-read at the moment you click Analyze (not when the button
-  first appears), so a half-loaded page or list preview never gets analyzed
-  by mistake. Nothing keys off hashed CSS class names, which churn every
-  deploy.
+  of swinging wildly between runs. ATS notes and suggestions are justified
+  and highlight the specific skills/keywords they're about, instead of
+  reading as an undifferentiated block of text.
+- **Robust job posting extraction, no scrolling or clicking required** — the
+  title, company, location, and full description are read from the page with
+  several safeguards: before reading, the extension hydrates any lazily-
+  rendered sections and clicks in-place "see more"/"show more" expanders on
+  your behalf, then waits for the DOM to settle, so the full description is
+  captured on the very first click — you never need to manually scroll the
+  page or expand anything yourself first. Text structure (`<br>`/`<li>`/`<p>`
+  boundaries) is preserved so labels stay attached to their values, page
+  chrome (site footers/nav bars swept in by a wide container) is stripped
+  before the text ever reaches the AI, the *largest* real description block
+  is chosen (not whichever markup comes first), JSON-LD and DOM sources are
+  merged for the richest result, and — importantly for single-page-app
+  boards like LinkedIn — the posting is re-read at the moment you click
+  Analyze (not when the button first appears), so a half-loaded page or list
+  preview never gets analyzed by mistake. Nothing keys off hashed CSS class
+  names, which churn every deploy.
 - **Job details extraction** — employment type, work mode (remote/hybrid/
   onsite), location, company, and salary, read directly from the posting.
   Works across languages (a posting in Japanese or Bengali still gets a
@@ -406,8 +418,10 @@ browser, never on the server.
   the tab — the install-detection check runs once when the page loads.
 - **Analysis says the description is missing / "only LinkedIn boilerplate"
   even though the job clearly has one**: make sure you're on the job's own
-  page with its "About the job" section visible, then click Analyze — the
-  extension re-reads the posting on click and waits briefly for it to load,
-  but it can only read what's actually rendered. If it persists on a specific
-  posting, that page's markup may be unusual; the strongest model
-  (`gemini-3-flash-preview`) also tends to handle sparse pages best.
+  page (not a search list or preview pane). Clicking Analyze re-reads the
+  posting, hydrates any lazily-rendered content, and clicks "see more"-style
+  expanders automatically — you shouldn't need to scroll or expand anything
+  yourself. If it still comes back thin on a specific posting, that page's
+  markup may be unusual (or the page is behind a login the extension can't
+  see through); the strongest model (`gemini-3-flash-preview`) also tends to
+  handle sparse pages best.

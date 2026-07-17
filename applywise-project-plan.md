@@ -15,7 +15,12 @@ floating button, a deterministic scoring rubric (see
 [AI workflow](#ai-workflow) below — this replaced an earlier freeform-score
 approach after it proved inconsistent run-to-run), salary/location/work-mode
 extraction with BDT conversion, a one-click extension-download flow with
-update checks, and session history with per-job status tracking. The
+update checks, session history with per-job status tracking, extraction that
+hydrates lazy-loaded/"see more"-gated descriptions and strips page chrome
+automatically (no manual scrolling required before clicking Analyze), a
+per-provider API key store (switching providers no longer loses the key you
+already entered for another one), and justified/highlighted ATS notes and
+suggestions on the results page. The
 "day one" CORS risk noted below was validated early and never became an
 issue — all AI calls run from the extension's background service worker,
 which isn't subject to a webpage's CORS restrictions, so the serverless

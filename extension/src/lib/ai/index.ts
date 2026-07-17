@@ -1,4 +1,4 @@
-import type { ProviderSettings } from "../types";
+import { getProviderApiKey, type ProviderSettings } from "../types";
 import type { AiClient } from "./client";
 import { createGeminiClient } from "./gemini";
 import { createOpenRouterClient } from "./openrouter";
@@ -12,20 +12,21 @@ export type { AiClient } from "./client";
 export { AiRequestError } from "./client";
 
 export function getAiClient(settings: ProviderSettings): AiClient {
+  const apiKey = getProviderApiKey(settings);
   switch (settings.provider) {
     case "gemini":
-      return createGeminiClient(settings.apiKey, settings.model);
+      return createGeminiClient(apiKey, settings.model);
     case "openrouter":
-      return createOpenRouterClient(settings.apiKey, settings.model);
+      return createOpenRouterClient(apiKey, settings.model);
     case "openai":
-      return createOpenAiClient(settings.apiKey, settings.model);
+      return createOpenAiClient(apiKey, settings.model);
     case "anthropic":
-      return createAnthropicClient(settings.apiKey, settings.model);
+      return createAnthropicClient(apiKey, settings.model);
     case "deepseek":
-      return createDeepSeekClient(settings.apiKey, settings.model);
+      return createDeepSeekClient(apiKey, settings.model);
     case "glm":
-      return createGlmClient(settings.apiKey, settings.model);
+      return createGlmClient(apiKey, settings.model);
     case "xai":
-      return createXaiClient(settings.apiKey, settings.model);
+      return createXaiClient(apiKey, settings.model);
   }
 }

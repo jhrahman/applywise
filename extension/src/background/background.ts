@@ -3,6 +3,7 @@ import { APP_URL } from "../lib/config";
 import { getAiClient, AiRequestError } from "../lib/ai";
 import { withModelFallback, type AttemptInfo } from "../lib/ai/fallback";
 import { browserApi } from "../lib/browser-api";
+import { getProviderApiKey, normalizeSettings } from "../lib/types";
 import type { Resume, ProviderSettings, JobEntry, JobPosting } from "../lib/types";
 import type {
   ExtensionMessage,
@@ -19,9 +20,13 @@ const DEFAULT_SETTINGS: ProviderSettings = {
   fallbackEnabled: true,
 };
 
-/** Single place settings are read, so the fallback default is applied uniformly. */
-function loadSettings(): Promise<ProviderSettings> {
-  return getItem<ProviderSettings>(STORAGE_KEYS.providerSettings, DEFAULT_SETTINGS);
+/**
+ * Single place settings are read, so the legacy→per-provider key migration and
+ * the fallback default are applied uniformly (see normalizeSettings).
+ */
+async function loadSettings(): Promise<ProviderSettings> {
+  const stored = await getItem<ProviderSettings>(STORAGE_KEYS.providerSettings, DEFAULT_SETTINGS);
+  return normalizeSettings(stored);
 }
 
 browserApi.runtime.onMessage.addListener((message: ExtensionMessage, sender, sendResponse) => {
@@ -78,7 +83,7 @@ async function handleGetResumes(): Promise<GetResumesResponse> {
   ]);
   return {
     resumes: resumes.map((r) => ({ id: r.id, profileName: r.profileName })),
-    hasApiKey: settings.apiKey.length > 0,
+    hasApiKey: getProviderApiKey(settings).length > 0,
   };
 }
 
@@ -94,7 +99,7 @@ async function handleAnalyze(
 
   const resume = resumes.find((r) => r.id === resumeId);
   if (!resume) return { ok: false, error: "Selected resume was not found in storage." };
-  if (!settings.apiKey) return { ok: false, error: "Add an API key on the Applywise settings page first." };
+  if (!getProviderApiKey(settings)) return { ok: false, error: "Add an API key on the Applywise settings page first." };
 
   let analysis;
   let modelUsed = settings.model;
@@ -156,7 +161,7 @@ async function handleGenerateInterviewQuestions(
       error: `The "${entry.resumeUsed.profileName}" resume used for this analysis is no longer saved.`,
     };
   }
-  if (!settings.apiKey) return { ok: false, error: "Add an API key on the Applywise settings page first." };
+  if (!getProviderApiKey(settings)) return { ok: false, error: "Add an API key on the Applywise settings page first." };
 
   let interviewQuestions;
   try {

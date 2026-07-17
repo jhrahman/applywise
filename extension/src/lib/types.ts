@@ -17,7 +17,16 @@ export type AiProvider =
 
 export interface ProviderSettings {
   provider: AiProvider;
-  apiKey: string;
+  // Legacy single shared key. Superseded by `apiKeys` (one key per provider) so
+  // switching providers no longer wipes the key you already entered. Kept
+  // optional for backward compatibility: settings saved before `apiKeys`
+  // shipped still carry it, and normalizeSettings() migrates it into
+  // `apiKeys[provider]` on load. Read the effective key via getProviderApiKey()
+  // rather than touching either field directly.
+  apiKey?: string;
+  // Per-provider API keys, so each provider remembers its own key. Partial
+  // because a user only fills in the providers they actually use.
+  apiKeys?: Partial<Record<AiProvider, string>>;
   model: string;
   // Whether a busy/rate-limited model may fall back to other free models (see
   // ai/fallback.ts). Only meaningful for providers with a free tier worth
@@ -27,6 +36,33 @@ export interface ProviderSettings {
   // records default to enabled instead of silently losing the fallback they
   // already had.
   fallbackEnabled?: boolean;
+}
+
+/**
+ * The API key for the currently selected provider. Reads the per-provider map
+ * first, then falls back to the legacy single `apiKey` — which, in every read
+ * context, belonged to whatever provider is currently selected (it was the
+ * active provider when the key was saved).
+ */
+export function getProviderApiKey(settings: ProviderSettings): string {
+  return settings.apiKeys?.[settings.provider] ?? settings.apiKey ?? "";
+}
+
+/**
+ * One-time migration applied on every load: folds the legacy single `apiKey`
+ * into `apiKeys[provider]` (the provider it was saved under) so per-provider
+ * lookups work uniformly, and backfills `fallbackEnabled`. Idempotent.
+ */
+export function normalizeSettings(settings: ProviderSettings): ProviderSettings {
+  const apiKeys: Partial<Record<AiProvider, string>> = { ...(settings.apiKeys ?? {}) };
+  if (settings.apiKey && apiKeys[settings.provider] == null) {
+    apiKeys[settings.provider] = settings.apiKey;
+  }
+  return {
+    ...settings,
+    apiKeys,
+    fallbackEnabled: settings.fallbackEnabled ?? true,
+  };
 }
 
 export interface JobPosting {

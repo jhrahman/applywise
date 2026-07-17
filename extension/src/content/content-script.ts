@@ -1,4 +1,4 @@
-import { extractJobPosting } from "../lib/extract";
+import { extractJobPosting, prepareJobDom } from "../lib/extract";
 import { getItem, STORAGE_KEYS } from "../lib/storage";
 import { browserApi } from "../lib/browser-api";
 import type {
@@ -243,6 +243,11 @@ class ApplywiseWidget {
    * keep whatever is richest.
    */
   private async captureFreshJob() {
+    // Reveal lazy-rendered and truncated ("see more") content first, so the
+    // read below sees the whole posting without the user scrolling or clicking
+    // anything. Best-effort — prepareJobDom swallows its own failures.
+    await prepareJobDom();
+
     let job = extractJobPosting();
     for (let i = 0; i < 5 && (!job || job.description.length < MIN_DESCRIPTION_CHARS); i++) {
       await sleep(300);

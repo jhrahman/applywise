@@ -306,12 +306,73 @@ function ChipGroup({
   );
 }
 
+// Escapes a user/AI-supplied string so it can be dropped into a RegExp as a
+// literal — skill and keyword names routinely contain regex metacharacters
+// (C++, C#, Node.js, ASP.NET), which would otherwise corrupt the pattern.
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+interface HighlightSegment {
+  text: string;
+  emphasize: boolean;
+}
+
+/**
+ * Splits a note into plain / emphasized segments. Emphasis is derived, not
+ * requested from the model: we mark the exact skills and keywords the analysis
+ * already surfaced (matching/missing/keywords) plus any quoted phrase the model
+ * called out. This makes the load-bearing words in a wall of ATS prose jump
+ * out without depending on a model reliably emitting formatting markup.
+ */
+function splitHighlights(text: string, terms: string[]): HighlightSegment[] {
+  // Quoted phrases first (both straight and curly quotes), then the known
+  // terms longest-first so "React Native" wins over a bare "React".
+  const cleanTerms = Array.from(new Set(terms.map((t) => t.trim()).filter((t) => t.length >= 2))).sort(
+    (a, b) => b.length - a.length
+  );
+  const patterns = ['"[^"]+"', "“[^”]+”", ...cleanTerms.map(escapeRegExp)];
+  const re = new RegExp(patterns.join("|"), "gi");
+
+  const segments: HighlightSegment[] = [];
+  let last = 0;
+  for (let m = re.exec(text); m !== null; m = re.exec(text)) {
+    if (m.index > last) segments.push({ text: text.slice(last, m.index), emphasize: false });
+    segments.push({ text: m[0], emphasize: true });
+    last = m.index + m[0].length;
+    if (m.index === re.lastIndex) re.lastIndex++; // guard against a zero-length match looping
+  }
+  if (last < text.length) segments.push({ text: text.slice(last), emphasize: false });
+  return segments;
+}
+
+function HighlightedNote({ text, terms }: { text: string; terms: string[] }) {
+  const segments = splitHighlights(text, terms);
+  return (
+    <>
+      {segments.map((seg, i) =>
+        seg.emphasize ? (
+          <mark
+            key={i}
+            className="rounded-[3px] bg-accent-1/15 px-0.5 font-semibold text-[var(--fg)]"
+          >
+            {seg.text}
+          </mark>
+        ) : (
+          <span key={i}>{seg.text}</span>
+        )
+      )}
+    </>
+  );
+}
+
 function BulletList({
   label,
   items,
   icon,
   delay,
   emptyState,
+  highlightTerms = [],
 }: {
   label: string;
   items: string[];
@@ -322,6 +383,9 @@ function BulletList({
   // silently dropping the section makes that indistinguishable from the
   // analysis never having run.
   emptyState?: string;
+  // Terms to emphasize inside each bullet — the skills/keywords this analysis
+  // already flagged. Empty is fine (quoted phrases still get emphasized).
+  highlightTerms?: string[];
 }) {
   if (items.length === 0 && !emptyState) return null;
   return (
@@ -339,11 +403,16 @@ function BulletList({
           {emptyState}
         </p>
       ) : (
-        <ul className="flex flex-col gap-1.5">
+        <ul className="flex flex-col gap-2">
           {items.map((item, i) => (
-            <li key={i} className="flex gap-2 text-sm leading-relaxed">
-              <span className="mt-2 h-1 w-1 shrink-0 rounded-full bg-[var(--fg-dim)]" />
-              {item}
+            <li key={i} className="flex gap-2.5 text-sm leading-relaxed">
+              <span className="mt-2 h-1 w-1 shrink-0 rounded-full bg-accent-1" />
+              {/* Justified so the multi-line notes read as tidy paragraphs
+                  rather than ragged fragments; hyphenation keeps justify from
+                  opening ugly rivers of whitespace on narrow columns. */}
+              <span className="min-w-0 flex-1 text-justify hyphens-auto text-[var(--fg)]">
+                <HighlightedNote text={item} terms={highlightTerms} />
+              </span>
             </li>
           ))}
         </ul>
@@ -502,6 +571,13 @@ function JobResultCard({
   onStatusChange: (status: JobStatus) => void;
 }) {
   const { job, analysis, resumeUsed } = entry;
+  // The words worth emphasizing inside the ATS notes and suggestions are
+  // exactly the skills and keywords this analysis already surfaced above.
+  const highlightTerms = [
+    ...analysis.matchingSkills,
+    ...analysis.missingSkills,
+    ...analysis.missingKeywords,
+  ];
   const headerLocation = job.location ?? analysis.jobDetails?.location;
   // The scraper falls back to a literal "Unknown company" placeholder when it
   // can't find structured company data — prefer the AI's read of the posting
@@ -584,12 +660,14 @@ function JobResultCard({
             icon={<FileWarning size={13} />}
             delay={REVEAL.notes}
             emptyState="No ATS parsing or keyword-matching issues found."
+            highlightTerms={highlightTerms}
           />
           <BulletList
             label="Suggestions"
             items={analysis.suggestions}
             icon={<Lightbulb size={13} />}
             delay={REVEAL.notes + REVEAL.noteStagger}
+            highlightTerms={highlightTerms}
           />
         </div>
       </CardContent>

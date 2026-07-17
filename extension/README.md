@@ -60,6 +60,29 @@ action required.
 `src/lib/extract.ts` pulls the job title, company, location, and full
 description out of the page. The parts that matter for reliability:
 
+- **No manual scrolling or "see more" clicking required**
+  (`prepareJobDom`). Many boards render the description lazily (content
+  mounts only once scrolled into view) and/or truncate it behind a "see
+  more"/"show more" control — previously, only scrolling the page by hand
+  made an analysis see the full text, because that scroll was doing the
+  extractor's hydration work for it. `prepareJobDom()` now does that
+  programmatically before every extraction: a fast, self-restoring scroll
+  sweep hydrates lazy content (your scroll position is unaffected), then it
+  clicks in-place expanders (`aria-expanded="false"`, "see more"/"show
+  more"/"read more" labels — never "see less", never a real navigation
+  link), across a few passes since expanding one section can reveal
+  another, waiting for the DOM to settle (mutation-quiet detection) between
+  passes. Entirely best-effort: any failure here just falls through to
+  extraction on whatever is already in the DOM, exactly as before.
+- **Page chrome stripped before reading** (`richContentOf`). A widened
+  container sometimes nests the site's own footer/nav (e.g. bdjobs' Angular
+  rebuild wraps a "Download Employer App" / partner-logos footer inside an
+  `<app-footer>` custom element that a text sweep can catch). Before reading
+  text, the extracted subtree is cloned and footer/nav/script/style nodes
+  (and `role="contentinfo"|"navigation"|"banner"`) are removed from the
+  clone — the live page is never mutated. Deliberately does **not** strip
+  `<header>`/`<aside>`, since some aggregators legitimately render the
+  salary/location/company overview box in one of those.
 - **Structure-preserving text** (`richTextFrom`). Plain `element.textContent`
   collapses `<br>` / `<li>` / `<p>` boundaries into one run-on line, so
   "Salary Range" and "BDT 80,000…" or "Location:" and its value blur
@@ -79,12 +102,19 @@ description out of the page. The parts that matter for reliability:
   swaps the job body *after* the floating button mounts, so the snapshot
   taken in `detectAndMount` was often a half-loaded page or a list preview —
   the cause of analyses that saw "only navigation/boilerplate" text. On
-  click we re-read the DOM and poll briefly (up to ~1.5s) for a substantial
-  description before sending, keeping the richest read.
+  click, `prepareJobDom()` runs first, then we re-read the DOM and poll
+  briefly (up to ~1.5s) for a substantial description before sending,
+  keeping the richest read.
 - **Class-name-independent by design.** LinkedIn ships hashed CSS classes
   (e.g. `_206505cb`) that churn every deploy, so nothing matches on them —
   extraction keys off `data-testid`, the "About the job" heading text, and
   structural signals (block boundaries, a real company-page link) instead.
+  The same principle extends to skill-chip detection
+  (`extractSkillChips`/`isSkillChip`): a directive like bdjobs'
+  `[apphighlight]` gets applied to headings and action buttons as well as
+  real skill pills by that site's own Angular rebuild, so chips are filtered
+  by shape (short, no block-level children) and label (rejecting
+  "Apply"/"See more"/"Login"-style furniture) rather than trusted outright.
 
 ## Live progress during analysis
 

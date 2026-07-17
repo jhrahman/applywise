@@ -23,13 +23,14 @@ import { getItem, setItem, STORAGE_KEYS } from "@/lib/storage";
 import { cn } from "@/lib/utils";
 import { useExtensionVersion } from "@/hooks/useExtensionVersion";
 import { FALLBACK_PROVIDERS, MODELS, PROVIDER_OPTIONS } from "./setup-models";
+import { getProviderApiKey, normalizeSettings } from "@/types";
 import type { AiProvider, ProviderSettings, Resume } from "@/types";
 
 const MAX_RESUMES = 3;
 
 const DEFAULT_SETTINGS: ProviderSettings = {
   provider: "gemini",
-  apiKey: "",
+  apiKeys: {},
   model: MODELS.gemini[0].value,
   fallbackEnabled: true,
 };
@@ -59,11 +60,12 @@ export function Setup() {
       getItem<ProviderSettings>(STORAGE_KEYS.providerSettings, DEFAULT_SETTINGS),
     ]).then(([storedResumes, storedSettings]) => {
       setResumes(storedResumes);
-      // Settings saved before the fallback toggle shipped have no
-      // fallbackEnabled field. Default those to on: Gemini fallback used to be
-      // unconditional, so reading `undefined` as "off" would quietly take away
-      // behavior those users already rely on.
-      setSettings({ ...storedSettings, fallbackEnabled: storedSettings.fallbackEnabled ?? true });
+      // normalizeSettings migrates the legacy single `apiKey` into the
+      // per-provider `apiKeys` map (so switching providers no longer wipes the
+      // key you entered) and defaults `fallbackEnabled` to on for settings
+      // saved before that toggle shipped — reading `undefined` as "off" would
+      // quietly take away behavior those users already rely on.
+      setSettings(normalizeSettings(storedSettings));
       setLoaded(true);
     });
   }, []);
@@ -278,9 +280,18 @@ export function Setup() {
             <Input
               type="password"
               placeholder="Paste your API key"
-              value={settings.apiKey}
-              onChange={(e) => setSettings({ ...settings, apiKey: e.target.value })}
+              value={getProviderApiKey(settings)}
+              onChange={(e) =>
+                setSettings({
+                  ...settings,
+                  apiKeys: { ...settings.apiKeys, [settings.provider]: e.target.value },
+                })
+              }
             />
+            <p className="text-xs text-[var(--fg-dim)]">
+              Saved per provider — each provider keeps its own key, so switching between them
+              restores the key you already entered.
+            </p>
           </div>
 
           <FallbackToggle
