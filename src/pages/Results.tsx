@@ -15,13 +15,21 @@ import {
   Trash2,
   X,
   Cpu,
+  FileText,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { getItem, setItem, STORAGE_KEYS } from "@/lib/storage";
 import { bridgeGenerateInterviewQuestions } from "@/lib/bridge";
 import { convertToBdt, formatBdt } from "@/lib/currency";
-import type { JobDetails, JobEntry, JobPosting, JobStatus } from "@/types";
+import type {
+  InterviewQA,
+  InterviewQuestionSource,
+  JobDetails,
+  JobEntry,
+  JobPosting,
+  JobStatus,
+} from "@/types";
 
 const STATUS_OPTIONS: { value: JobStatus; label: string }[] = [
   { value: "saved", label: "Saved" },
@@ -229,13 +237,19 @@ function BulletList({
   items,
   icon,
   delay,
+  emptyState,
 }: {
   label: string;
   items: string[];
   icon: React.ReactNode;
   delay: number;
+  // Shown instead of hiding the section when the list is legitimately empty.
+  // For ATS notes an empty list is a *result* ("nothing wrong found"), and
+  // silently dropping the section makes that indistinguishable from the
+  // analysis never having run.
+  emptyState?: string;
 }) {
-  if (items.length === 0) return null;
+  if (items.length === 0 && !emptyState) return null;
   return (
     <div
       className="opacity-0"
@@ -245,14 +259,24 @@ function BulletList({
         {icon}
         {label}
       </div>
-      <ul className="flex flex-col gap-1.5">
-        {items.map((item, i) => (
-          <li key={i} className="flex gap-2 text-sm leading-relaxed">
-            <span className="mt-2 h-1 w-1 shrink-0 rounded-full bg-[var(--fg-dim)]" />
-            {item}
-          </li>
-        ))}
-      </ul>
+      {items.length === 0 ? (
+        <p
+          className="flex items-center gap-1.5 text-sm"
+          style={{ color: "var(--status-good-text)" }}
+        >
+          <CheckCircle2 size={14} className="shrink-0" />
+          {emptyState}
+        </p>
+      ) : (
+        <ul className="flex flex-col gap-1.5">
+          {items.map((item, i) => (
+            <li key={i} className="flex gap-2 text-sm leading-relaxed">
+              <span className="mt-2 h-1 w-1 shrink-0 rounded-full bg-[var(--fg-dim)]" />
+              {item}
+            </li>
+          ))}
+        </ul>
+      )}
     </div>
   );
 }
@@ -488,6 +512,7 @@ function JobResultCard({
             items={analysis.atsNotes}
             icon={<FileWarning size={13} />}
             delay={400}
+            emptyState="No ATS parsing or keyword-matching issues found."
           />
           <BulletList
             label="Suggestions"
@@ -517,9 +542,10 @@ function InterviewQuestionsCard({
       <CardHeader>
         <CardTitle>Interview prep</CardTitle>
         <CardDescription>
-          Generate up to 20 likely interview questions with suggested answers, based on this
-          resume and job posting.
+          Up to 20 questions predicted for this role — weighted 60% toward the job posting's
+          skills and responsibilities, 40% toward your resume — each with a suggested answer.
         </CardDescription>
+        {entry.interviewQuestions && <QuestionMixSummary questions={entry.interviewQuestions} />}
       </CardHeader>
       <CardContent className="flex flex-col gap-4">
         {!entry.interviewQuestions && (
@@ -540,7 +566,10 @@ function InterviewQuestionsCard({
                 className="rounded-lg border border-[var(--border)] p-4 opacity-0"
                 style={{ animation: "reveal-row 0.4s ease forwards", animationDelay: `${i * 60}ms` }}
               >
-                <p className="mb-1.5 text-sm font-semibold">{qa.question}</p>
+                <div className="mb-1.5 flex items-start justify-between gap-3">
+                  <p className="text-sm font-semibold">{qa.question}</p>
+                  <SourceBadge source={qa.source} />
+                </div>
                 <p className="text-sm text-[var(--fg-dim)]">{qa.suggestedAnswer}</p>
               </div>
             ))}
@@ -548,6 +577,60 @@ function InterviewQuestionsCard({
         )}
       </CardContent>
     </Card>
+  );
+}
+
+// The question mix is a promise the card makes ("60% from the posting"), so
+// show the counts the model actually returned rather than asking the user to
+// take it on faith. Also makes a model that ignored the ratio visible instead
+// of silently shipping 20 resume-walkthrough questions.
+function QuestionMixSummary({ questions }: { questions: InterviewQA[] }) {
+  const total = questions.length;
+  const fromJob = questions.filter((qa) => qa.source === "job").length;
+  const fromResume = questions.filter((qa) => qa.source === "resume").length;
+
+  // Pre-split entries carry no source tag — nothing meaningful to summarize.
+  if (fromJob + fromResume === 0) return null;
+
+  const jobPercent = Math.round((fromJob / total) * 100);
+
+  return (
+    <div className="mt-3 flex flex-wrap items-center gap-2 text-xs font-semibold">
+      <span className="flex items-center gap-1.5 rounded-full px-2 py-0.5" style={SOURCE_STYLES.job}>
+        <Briefcase size={11} className="shrink-0" />
+        {fromJob} from the job posting
+      </span>
+      <span className="flex items-center gap-1.5 rounded-full px-2 py-0.5" style={SOURCE_STYLES.resume}>
+        <FileText size={11} className="shrink-0" />
+        {fromResume} from your CV
+      </span>
+      <span className="text-[var(--fg-dim)]">{jobPercent}% role-focused</span>
+    </div>
+  );
+}
+
+const SOURCE_STYLES = {
+  job: { color: "var(--status-good-text)", backgroundColor: "var(--status-good-bg)" },
+  resume: { color: "var(--status-warn-text)", backgroundColor: "var(--status-warn-bg)" },
+} as const;
+
+function SourceBadge({ source }: { source?: InterviewQuestionSource }) {
+  if (!source) return null;
+
+  const isJob = source === "job";
+  return (
+    <span
+      className="flex shrink-0 items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-bold whitespace-nowrap"
+      style={SOURCE_STYLES[source]}
+      title={
+        isJob
+          ? "Predicted from the job posting's skills, responsibilities, and requirements"
+          : "Predicted from your resume's experience and projects"
+      }
+    >
+      {isJob ? <Briefcase size={10} className="shrink-0" /> : <FileText size={10} className="shrink-0" />}
+      {isJob ? "Job posting" : "Your CV"}
+    </span>
   );
 }
 

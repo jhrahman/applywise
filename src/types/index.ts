@@ -48,8 +48,15 @@ export interface MatchAnalysis {
   jobDetails: JobDetails;
 }
 
+/** Which document the question was derived from — see QUESTION_MIX in extension/src/lib/ai/prompt.ts. */
+export type InterviewQuestionSource = "job" | "resume";
+
 export interface InterviewQA {
   question: string;
+  // Optional because entries generated before the 60/40 split shipped are
+  // already in users' storage without it — the UI omits the badge for those
+  // rather than mislabeling them.
+  source?: InterviewQuestionSource;
   suggestedAnswer: string;
 }
 

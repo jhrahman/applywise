@@ -37,6 +37,8 @@ async function handleRequest(request: BridgeRequest): Promise<unknown> {
   switch (request.type) {
     case "PING":
       return true;
+    case "GET_VERSION":
+      return browserApi.runtime.getManifest().version;
     case "STORAGE_GET":
       return getItem(request.key, null);
     case "STORAGE_SET":

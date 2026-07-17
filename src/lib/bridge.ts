@@ -63,6 +63,11 @@ function forgetExtensionAvailability() {
   extensionAvailable = null;
 }
 
+/** The manifest version of the extension actually installed in this browser. */
+export async function bridgeGetExtensionVersion(): Promise<string> {
+  return sendBridgeRequest<string>({ type: "GET_VERSION" }, 500);
+}
+
 export async function bridgeStorageGet<T>(key: string): Promise<T | null> {
   try {
     return await sendBridgeRequest<T | null>({ type: "STORAGE_GET", key });

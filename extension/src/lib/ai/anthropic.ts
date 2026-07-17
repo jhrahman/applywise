@@ -3,7 +3,7 @@ import { buildInterviewQuestionsPrompt, buildMatchAnalysisPrompt } from "./promp
 import {
   extractJsonPayload,
   interviewQuestionsSchema,
-  matchAnalysisSchema,
+  parseMatchAnalysis,
 } from "./schema";
 import {
   assertOk,
@@ -54,7 +54,7 @@ export function createAnthropicClient(apiKey: string, model: string): AiClient {
     async generateMatchAnalysis(resumeText: string, job: JobPosting): Promise<MatchAnalysis> {
       const prompt = buildMatchAnalysisPrompt(resumeText, job);
       const text = await callAnthropic(apiKey, model, prompt, MATCH_ANALYSIS_TEMPERATURE);
-      return matchAnalysisSchema.parse(extractJsonPayload(text));
+      return parseMatchAnalysis(extractJsonPayload(text));
     },
 
     async generateInterviewQuestions(resumeText: string, job: JobPosting): Promise<InterviewQA[]> {

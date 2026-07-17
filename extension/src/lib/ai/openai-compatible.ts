@@ -4,7 +4,7 @@ import {
   extractJsonPayload,
   interviewQuestionsJsonSchema,
   interviewQuestionsSchema,
-  matchAnalysisSchema,
+  parseMatchAnalysis,
   matchAnalysisThoroughJsonSchema,
 } from "./schema";
 import {
@@ -77,7 +77,7 @@ export function createOpenAiCompatibleClient(options: {
       // GLM/xAI) still produce it from the prompt, and zod strips it on parse.
       const prompt = buildMatchAnalysisPrompt(resumeText, job);
       const text = await call(prompt, "match_analysis", matchAnalysisThoroughJsonSchema, MATCH_ANALYSIS_TEMPERATURE);
-      return matchAnalysisSchema.parse(extractJsonPayload(text));
+      return parseMatchAnalysis(extractJsonPayload(text));
     },
 
     async generateInterviewQuestions(resumeText: string, job: JobPosting): Promise<InterviewQA[]> {

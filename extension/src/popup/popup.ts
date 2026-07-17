@@ -1,6 +1,7 @@
 import { getItem, setItem, STORAGE_KEYS } from "../lib/storage";
 import { APP_URL } from "../lib/config";
 import { browserApi } from "../lib/browser-api";
+import { isUpdateAvailable } from "../lib/version";
 import type { Resume, ProviderSettings } from "../lib/types";
 
 const DEFAULT_SETTINGS: ProviderSettings = { provider: "gemini", apiKey: "", model: "gemini-3-flash-preview" };
@@ -18,7 +19,7 @@ async function checkForUpdate() {
     if (!response.ok) return;
     const { version: latestVersion } = (await response.json()) as { version?: string };
     const currentVersion = browserApi.runtime.getManifest().version;
-    if (latestVersion && latestVersion !== currentVersion) {
+    if (latestVersion && isUpdateAvailable(currentVersion, latestVersion)) {
       await setItem(STORAGE_KEYS.updateAvailable, { latestVersion });
     } else {
       await setItem(STORAGE_KEYS.updateAvailable, null);
@@ -37,10 +38,13 @@ async function render() {
     getItem<{ latestVersion: string } | null>(STORAGE_KEYS.updateAvailable, null),
   ]);
 
+  const currentVersion = browserApi.runtime.getManifest().version;
+  document.getElementById("version-chip")!.textContent = `v${currentVersion}`;
+
   const updateBanner = document.getElementById("update-banner")!;
   if (updateAvailable) {
-    updateBanner.textContent = `New version (${updateAvailable.latestVersion}) available — download and reload`;
-    updateBanner.style.display = "block";
+    document.getElementById("update-version")!.textContent = `v${updateAvailable.latestVersion}`;
+    updateBanner.style.display = "flex";
   } else {
     updateBanner.style.display = "none";
   }

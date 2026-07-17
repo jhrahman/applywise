@@ -4,7 +4,7 @@ import {
   extractJsonPayload,
   interviewQuestionsJsonSchema,
   interviewQuestionsSchema,
-  matchAnalysisSchema,
+  parseMatchAnalysis,
   matchAnalysisThoroughGeminiJsonSchema,
 } from "./schema";
 import {
@@ -75,7 +75,7 @@ export function createGeminiClient(apiKey: string, model: string): AiClient {
         MATCH_ANALYSIS_TEMPERATURE,
         lite ? MATCH_ANALYSIS_THOROUGH_TIMEOUT_MS : MATCH_ANALYSIS_TIMEOUT_MS
       );
-      return matchAnalysisSchema.parse(extractJsonPayload(text));
+      return parseMatchAnalysis(extractJsonPayload(text));
     },
 
     async generateInterviewQuestions(resumeText: string, job: JobPosting): Promise<InterviewQA[]> {

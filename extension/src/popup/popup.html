@@ -136,17 +136,66 @@
         text-align: center;
         line-height: 1.5;
       }
+      .version-chip {
+        font-size: 10px;
+        font-weight: 700;
+        font-variant-numeric: tabular-nums;
+        letter-spacing: 0;
+        padding: 2px 7px;
+        border-radius: 999px;
+        border: 1px solid #4a4d52;
+        color: #9a978f;
+      }
+
+      /* Hidden until checkForUpdate() finds a newer published build — see
+         popup.ts. Uses display:flex when shown, so the JS toggles to "flex". */
       #update-banner {
         display: none;
-        cursor: pointer;
-        padding: 9px 12px;
+        width: 100%;
+        align-items: center;
+        gap: 10px;
+        text-align: left;
+        padding: 10px 12px;
         border-radius: 10px;
-        font-size: 12px;
-        font-weight: 700;
-        text-align: center;
-        line-height: 1.4;
         color: #1a1206;
         background: linear-gradient(90deg, #f5a623, #e8791a);
+        box-shadow: 0 4px 14px rgba(232, 121, 26, 0.3);
+      }
+      .update-dot {
+        width: 7px;
+        height: 7px;
+        flex-shrink: 0;
+        border-radius: 50%;
+        background: #1a1206;
+        animation: pulse-dot 1.6s ease-in-out infinite;
+      }
+      .update-text {
+        flex: 1;
+        min-width: 0;
+        font-size: 12px;
+        font-weight: 800;
+        line-height: 1.35;
+      }
+      .update-sub {
+        display: block;
+        font-size: 10px;
+        font-weight: 600;
+        opacity: 0.75;
+      }
+      .update-arrow {
+        flex-shrink: 0;
+        font-size: 13px;
+        font-weight: 800;
+        transition: transform 0.15s ease;
+      }
+      #update-banner:hover .update-arrow { transform: translateY(2px); }
+
+      @keyframes pulse-dot {
+        0%, 100% { opacity: 0.35; transform: scale(0.85); }
+        50% { opacity: 1; transform: scale(1.1); }
+      }
+      @media (prefers-reduced-motion: reduce) {
+        .update-dot { animation: none; opacity: 1; }
       }
     </style>
   </head>
@@ -155,10 +204,18 @@
       <div class="brand">
         <img src="icons/icon-32.png" alt="Applywise logo" />
         <span>Applywise</span>
+        <span class="version-chip" id="version-chip" title="Installed version"></span>
       </div>
     </div>
     <div class="body">
-      <div id="update-banner"></div>
+      <button id="update-banner" type="button">
+        <span class="update-dot"></span>
+        <span class="update-text">
+          New Update Available
+          <span class="update-sub">Tap to get <span id="update-version"></span></span>
+        </span>
+        <span class="update-arrow">↓</span>
+      </button>
       <div class="toggle-row">
         <span id="enabled-label">Applywise is on</span>
         <label class="switch">

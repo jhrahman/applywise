@@ -1,5 +1,15 @@
 import { useEffect, useRef, useState } from "react";
-import { Trash2, Upload, Loader2, CheckCircle2, Download, Puzzle, RefreshCw, Monitor } from "lucide-react";
+import {
+  Trash2,
+  Upload,
+  Loader2,
+  CheckCircle2,
+  Download,
+  Puzzle,
+  RefreshCw,
+  Monitor,
+  ArrowRight,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -8,7 +18,7 @@ import { Select } from "@/components/ui/select";
 import { AnimatedCheckmark } from "@/components/ui/animated-checkmark";
 import { extractTextFromPdf } from "@/lib/pdf";
 import { getItem, setItem, STORAGE_KEYS } from "@/lib/storage";
-import { isExtensionAvailable } from "@/lib/bridge";
+import { useExtensionVersion } from "@/hooks/useExtensionVersion";
 import type { AiProvider, ProviderSettings, Resume } from "@/types";
 
 const MAX_RESUMES = 3;
@@ -84,18 +94,13 @@ export function Setup() {
   const [saved, setSaved] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [loaded, setLoaded] = useState(false);
-  const [extensionInstalled, setExtensionInstalled] = useState<boolean | null>(null);
-  const [updateAvailable, setUpdateAvailable] = useState<{ latestVersion: string } | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
-
-  useEffect(() => {
-    isExtensionAvailable().then((available) => {
-      setExtensionInstalled(available);
-      if (available) {
-        getItem<{ latestVersion: string } | null>(STORAGE_KEYS.updateAvailable, null).then(setUpdateAvailable);
-      }
-    });
-  }, []);
+  const {
+    installed: extensionInstalled,
+    installedVersion,
+    latestVersion,
+    updateAvailable,
+  } = useExtensionVersion();
 
   useEffect(() => {
     Promise.all([
@@ -195,9 +200,9 @@ export function Setup() {
         </div>
       </div>
 
-      {extensionInstalled === false && <InstallExtensionCard />}
-      {extensionInstalled === true && updateAvailable && (
-        <UpdateAvailableCard latestVersion={updateAvailable.latestVersion} />
+      {extensionInstalled === false && <InstallExtensionCard latestVersion={latestVersion} />}
+      {updateAvailable && (
+        <UpdateAvailableCard latestVersion={latestVersion!} installedVersion={installedVersion!} />
       )}
 
       <Card>
@@ -355,7 +360,7 @@ const INSTALL_STEPS = [
 // every major browser for security reasons. Downloading a pre-built, always
 // up-to-date zip plus three short steps is the closest thing to one-click
 // until this ships on the Chrome Web Store / Firefox Add-ons.
-function InstallExtensionCard() {
+function InstallExtensionCard({ latestVersion }: { latestVersion: string | null }) {
   return (
     <Card
       className="border-accent-1/40"
@@ -379,7 +384,7 @@ function InstallExtensionCard() {
         <a href="/applywise-extension.zip" download className="w-fit">
           <Button>
             <Download size={16} />
-            Download extension (.zip)
+            Download extension{latestVersion ? ` v${latestVersion}` : ""} (.zip)
           </Button>
         </a>
         <ol className="flex flex-col gap-1.5 text-sm text-[var(--fg-dim)]">
@@ -401,11 +406,17 @@ function InstallExtensionCard() {
 }
 
 // "Load unpacked" extensions never auto-update (only Chrome Web Store/Firefox
-// Add-ons installs do), so the popup checks a version file on every open and
-// flags a mismatch here — this is the closest thing to a nudge that a
+// Add-ons installs do), so both this page and the popup check a published
+// version file and flag a mismatch — the closest thing to a nudge that a
 // re-download is actually needed, instead of the user guessing after every
 // push that touches extension/ code.
-function UpdateAvailableCard({ latestVersion }: { latestVersion: string }) {
+function UpdateAvailableCard({
+  latestVersion,
+  installedVersion,
+}: {
+  latestVersion: string;
+  installedVersion: string;
+}) {
   return (
     <Card
       className="border-accent-1/40"
@@ -416,13 +427,21 @@ function UpdateAvailableCard({ latestVersion }: { latestVersion: string }) {
           <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-accent-1/15 text-accent-1">
             <RefreshCw size={18} />
           </div>
-          <div>
-            <CardTitle>Extension update available</CardTitle>
+          <div className="min-w-0">
+            <CardTitle>New update available</CardTitle>
             <CardDescription>
-              Version {latestVersion} is live, but your installed extension is older. Unpacked
-              installs don't auto-update — download the latest build and reload it to pick up
-              recent fixes.
+              Unpacked installs don't auto-update — download the latest build and reload it to
+              pick up recent fixes.
             </CardDescription>
+            <div className="mt-3 flex items-center gap-2 text-xs font-semibold tabular-nums">
+              <span className="rounded-full border border-[var(--border)] px-2 py-0.5 text-[var(--fg-dim)]">
+                v{installedVersion}
+              </span>
+              <ArrowRight size={13} className="shrink-0 text-[var(--fg-dim)]" />
+              <span className="rounded-full bg-accent-1/15 px-2 py-0.5 text-accent-1">
+                v{latestVersion}
+              </span>
+            </div>
           </div>
         </div>
       </CardHeader>
@@ -430,7 +449,7 @@ function UpdateAvailableCard({ latestVersion }: { latestVersion: string }) {
         <a href="/applywise-extension.zip" download className="w-fit">
           <Button>
             <Download size={16} />
-            Download latest extension (.zip)
+            Download v{latestVersion} (.zip)
           </Button>
         </a>
         <p className="mt-3 text-xs text-[var(--fg-dim)]">
