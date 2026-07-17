@@ -575,6 +575,42 @@ function descriptionScopes(): ParentNode[] {
   return [...scopes];
 }
 
+/** The actual description body elements (not their wrappers) — the regions to scroll through. */
+function descriptionElements(): Element[] {
+  const els = new Set<Element>();
+  for (const selector of PRECISE_DESCRIPTION_SELECTORS) {
+    const el = largestMatch(selector);
+    if (el) els.add(el);
+  }
+  const byHeading = findByHeadingText();
+  if (byHeading) els.add(byHeading);
+  return [...els];
+}
+
+/** True when an element scrolls its own content vertically, independent of the window. */
+function isScrollableY(el: Element): boolean {
+  if (el.scrollHeight <= el.clientHeight + 100) return false;
+  const overflowY = getComputedStyle(el).overflowY;
+  return overflowY === "auto" || overflowY === "scroll" || overflowY === "overlay";
+}
+
+/**
+ * Scrolls an element's own scroll range top→bottom and back, pausing so any
+ * IntersectionObserver-driven lazy content inside it renders. Restores the
+ * element's original scroll position afterward.
+ */
+async function scrollThroughContainer(el: Element): Promise<void> {
+  const start = el.scrollTop;
+  const step = Math.max(300, Math.floor(el.clientHeight * 0.85));
+  for (let y = 0; y < el.scrollHeight; y += step) {
+    el.scrollTop = y;
+    await sleep(45);
+  }
+  el.scrollTop = el.scrollHeight;
+  await sleep(50);
+  el.scrollTop = start;
+}
+
 /**
  * Waits until the DOM stops mutating for `quietMs`, or `maxWaitMs` elapses —
  * whichever comes first. Lets lazily-hydrated content and just-expanded
@@ -600,23 +636,66 @@ function waitForDomToSettle(quietMs = 250, maxWaitMs = 1500): Promise<void> {
 }
 
 /**
- * Hydrates lazy content by scrolling through the document once and restoring
- * the original position. Boards that mount the description (or parts of it) via
- * an IntersectionObserver only render it after it enters the viewport — this
- * makes that happen without the user seeing (or doing) the scroll.
+ * Hydrates lazy content by scrolling everything that scrolls, then restoring
+ * the original positions. Boards that mount the description (or parts of it)
+ * via an IntersectionObserver only render it once it enters *a* viewport —
+ * and the relevant viewport isn't always the window's:
+ *
+ *  1. The whole page is swept, for page-level lazy sections (top and bottom).
+ *  2. The description body is brought into view and its own scroll containers
+ *     are scrolled through. This is the LinkedIn case — its authenticated job
+ *     view renders the "About the job" card inside a detail pane that scrolls
+ *     independently of the page, so a window-only sweep never brings that
+ *     card's lazily-rendered body into the pane's viewport. Walking the
+ *     description's scrollable ancestors and scrolling each one fixes that.
+ *
+ * All of it is invisible: positions are restored before the function returns.
  */
 async function hydrateLazyContent(): Promise<void> {
   const startX = window.scrollX;
   const startY = window.scrollY;
-  const step = Math.max(400, Math.floor(window.innerHeight * 0.85));
-  const maxHeight = document.documentElement.scrollHeight;
 
-  for (let y = 0; y < maxHeight; y += step) {
+  // 1. Whole-window sweep. The page height is re-read every step rather than
+  //    fixed up front: LinkedIn (and other SPA boards) lazily extend the page
+  //    as you scroll — the full "About the job" body and the sections below it
+  //    only mount once scrolled toward — so a sweep bounded by the *initial*
+  //    height stops partway down and misses the tail of the description. The
+  //    loop keeps advancing while new content keeps growing the page, capped so
+  //    an infinite-scroll feed can't trap it.
+  const step = Math.max(400, Math.floor(window.innerHeight * 0.85));
+  let y = 0;
+  for (let i = 0; i < 80; i++) {
+    const height = document.documentElement.scrollHeight;
+    if (y >= height) break;
     window.scrollTo(0, y);
-    await sleep(50);
+    await sleep(45);
+    y += step;
   }
-  window.scrollTo(0, maxHeight);
+  window.scrollTo(0, document.documentElement.scrollHeight);
   await sleep(60);
+
+  // 2. The description's own scrollable containers (e.g. LinkedIn's detail pane).
+  const scrolled = new Set<Element>();
+  for (const el of descriptionElements()) {
+    try {
+      el.scrollIntoView({ block: "start" });
+    } catch {
+      // Non-fatal — some engines throw on detached nodes; keep going.
+    }
+    await sleep(30);
+    let cur: Element | null = el;
+    // Walk a few ancestors: the scroll container is usually the description's
+    // pane a level or two up, not the text element itself.
+    for (let up = 0; up < 6 && cur; up++) {
+      if (!scrolled.has(cur) && isScrollableY(cur)) {
+        scrolled.add(cur);
+        await scrollThroughContainer(cur);
+      }
+      cur = cur.parentElement;
+    }
+  }
+
+  // 3. Restore the window; inner containers restored themselves above.
   window.scrollTo(startX, startY);
 }
 
@@ -628,20 +707,77 @@ async function hydrateLazyContent(): Promise<void> {
  * already there, exactly as before.
  */
 export async function prepareJobDom(): Promise<void> {
+  // Captured once, before anything scrolls, and restored once at the very end.
+  // The individual scroll sweeps can't own this: clicking a "see more" button
+  // focus-scrolls it into view, so a later sweep would otherwise treat that
+  // shifted position as "home" and leave the page visibly moved.
+  const startX = window.scrollX;
+  const startY = window.scrollY;
   try {
     await hydrateLazyContent();
 
+    let expandedAny = false;
     for (let pass = 0; pass < 3; pass++) {
       let clicked = 0;
       for (const scope of descriptionScopes()) clicked += clickExpanders(scope);
       if (clicked === 0) break;
+      expandedAny = true;
       await waitForDomToSettle();
     }
 
+    // Expanding a "see more" often reveals content that is itself lazily
+    // rendered (LinkedIn's full "About the job" body is only laid out once the
+    // box is both expanded *and* scrolled into its pane's view) — so sweep once
+    // more after expanding, then let the final layout settle before reading.
+    if (expandedAny) await hydrateLazyContent();
     await waitForDomToSettle();
   } catch {
     // Never let DOM prep block an analysis — fall through to extraction.
+  } finally {
+    window.scrollTo(startX, startY);
   }
+}
+
+// Section headings that mark the end of the actual posting and the start of a
+// board's own recommendation/footer widgets — LinkedIn appends several of these
+// right after the description ("Benefits found in job post" is its own parsed
+// summary; "Set alert for similar jobs" / "People also viewed" are unrelated
+// job feeds). When the extracted container sweeps one in, everything from that
+// heading onward is board furniture, not the job — so the description is cut
+// there. All are distinctive multi-word UI strings that don't occur as short
+// standalone lines inside a real description.
+const TRAILING_NOISE_HEADINGS = [
+  "set alert for similar jobs",
+  "benefits found in job post",
+  "people also viewed",
+  "similar jobs",
+  "jobs you may be interested in",
+  "more jobs like this",
+  "show more jobs like this",
+  "show fewer jobs like this",
+  "see more jobs like this",
+  "recommended for you",
+];
+
+/**
+ * Cuts the description at the first line that is a board's trailing-widget
+ * heading (see TRAILING_NOISE_HEADINGS), so recommendation feeds and alert
+ * cards below the posting never reach the AI. Only cuts once a substantial
+ * description already precedes the heading, so an early false match can't
+ * discard the whole body.
+ */
+function trimTrailingNoise(description: string): string {
+  const lines = description.split("\n");
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i].trim().toLowerCase().replace(/[\s:·|–—-]+$/, "");
+    // Headings are short; skip prose lines that merely contain a phrase.
+    if (line.length === 0 || line.length > 45) continue;
+    if (TRAILING_NOISE_HEADINGS.some((h) => line === h || line.startsWith(h))) {
+      const kept = lines.slice(0, i).join("\n").trim();
+      if (kept.length > 200) return kept;
+    }
+  }
+  return description;
 }
 
 export function extractJobPosting(): JobPosting | null {
@@ -649,7 +785,8 @@ export function extractJobPosting(): JobPosting | null {
   let base = mergeExtractions(extractFromJsonLd(), extractHeuristic());
   if (!base) return null;
 
-  base = { ...base, description: appendSkillsLine(base.description, skillChips) };
+  const trimmed = trimTrailingNoise(base.description);
+  base = { ...base, description: appendSkillsLine(trimmed, skillChips) };
   if (window.location.hostname.includes("linkedin.com")) base = applyLinkedInMeta(base);
 
   return { ...base, description: truncate(base.description) };
