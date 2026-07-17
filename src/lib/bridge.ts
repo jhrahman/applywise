@@ -6,20 +6,34 @@ import {
 } from "./bridge-protocol";
 
 const DEFAULT_TIMEOUT_MS = 1500;
+const NOT_INSTALLED_MESSAGE = "The Applywise extension isn't installed, or isn't running on this page.";
 
 class BridgeTimeoutError extends Error {
-  constructor() {
-    super("The Applywise extension isn't installed, or isn't running on this page.");
+  constructor(message: string = NOT_INSTALLED_MESSAGE) {
+    super(message);
   }
 }
 
-function sendBridgeRequest<T>(request: BridgeRequest, timeoutMs = DEFAULT_TIMEOUT_MS): Promise<T> {
+/**
+ * `timeoutMessage` defaults to "not installed", which is the right read for
+ * every short, cheap request (PING, STORAGE_GET/SET) — if those don't answer
+ * within a second or two, there's genuinely no bridge listening. It is the
+ * *wrong* read for a request whose own work can legitimately run past that
+ * window (see bridgeGenerateInterviewQuestions below), so callers with a
+ * long-running request pass an honest message describing what a timeout there
+ * actually means instead.
+ */
+function sendBridgeRequest<T>(
+  request: BridgeRequest,
+  timeoutMs = DEFAULT_TIMEOUT_MS,
+  timeoutMessage?: string
+): Promise<T> {
   return new Promise((resolve, reject) => {
     const requestId = crypto.randomUUID();
 
     const timer = setTimeout(() => {
       window.removeEventListener("message", handleMessage);
-      reject(new BridgeTimeoutError());
+      reject(new BridgeTimeoutError(timeoutMessage));
     }, timeoutMs);
 
     function handleMessage(event: MessageEvent) {
@@ -86,6 +100,23 @@ export async function bridgeStorageSet(key: string, value: unknown): Promise<voi
   }
 }
 
+// Generating interview questions calls the AI provider a second time, and that
+// call alone is allowed up to 90s (see extension's MATCH_ANALYSIS_TIMEOUT_MS/
+// fetchTextWithTimeout default) — before auto-fallback (extension/src/lib/ai/
+// fallback.ts) even gets a chance to hop to a second model on a busy/rate-
+// limited one. A 60s bridge timeout used to fire before that single call could
+// even finish, and — because it reused the generic "not installed" message —
+// told a user whose extension was working perfectly that it wasn't, which is
+// simply false. 5 minutes matches the Chrome MV3 service-worker ceiling
+// documented alongside OPENROUTER_TIMEOUT_MS in the extension's ai/client.ts:
+// past that, the extension's own background worker is the one giving up, not
+// this timer, so there's no such thing as "waiting too long" before then.
+const INTERVIEW_QUESTIONS_TIMEOUT_MS = 5 * 60_000;
+
 export async function bridgeGenerateInterviewQuestions<T>(jobId: string): Promise<T> {
-  return sendBridgeRequest<T>({ type: "GENERATE_INTERVIEW_QUESTIONS", jobId }, 60_000);
+  return sendBridgeRequest<T>(
+    { type: "GENERATE_INTERVIEW_QUESTIONS", jobId },
+    INTERVIEW_QUESTIONS_TIMEOUT_MS,
+    "Generating interview questions is taking longer than usual — this can happen when free-tier AI models are busy and the extension is trying another one. Please wait a little longer, then try again if this keeps happening."
+  );
 }

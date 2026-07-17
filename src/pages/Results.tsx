@@ -720,10 +720,12 @@ function InterviewQuestionsCard({
                 className="rounded-lg border border-[var(--border)] p-4"
               >
                 <div className="mb-1.5 flex items-start justify-between gap-3">
-                  <p className="text-sm font-semibold">{qa.question}</p>
+                  <p className="text-sm font-semibold text-justify hyphens-auto">{qa.question}</p>
                   <SourceBadge source={qa.source} />
                 </div>
-                <p className="text-sm text-[var(--fg-dim)]">{qa.suggestedAnswer}</p>
+                <p className="text-sm text-justify hyphens-auto text-[var(--fg-dim)]">
+                  {qa.suggestedAnswer}
+                </p>
               </Reveal>
             ))}
           </div>
