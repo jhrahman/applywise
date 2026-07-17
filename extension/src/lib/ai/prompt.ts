@@ -42,13 +42,15 @@ const ANALYSIS_METHOD = `Follow this procedure exactly — never assign a score 
 1. Populate the "requirementAnalysis" field FIRST and in full. Write one entry for every distinct skill, technology, tool, qualification, and requirement the posting states — individually, even minor or obvious ones; do not merge or summarize. Mark each as "required" (must-have) or "preferred" (nice-to-have); if the posting doesn't distinguish, treat it as "required".
 2. For each entry, set resumeEvidence to the specific resume text that genuinely satisfies it, or null if the resume shows no real evidence; set status to "found" or "missing" accordingly. Judge each requirement in isolation against the resume text — never reason "the resume looks strong overall, so this is probably covered", and never let unrelated experience count for a specifically named tool.
 3. Derive the summary fields strictly from requirementAnalysis: matchingSkills = entries with status "found"; missingSkills = entries with status "missing".
-4. Compute matchScore from the counts (do not guess it — and note that this arithmetic is re-done in code from your requirementAnalysis and experienceFit, so a guessed number will simply be discarded and replaced):
+4. Compute matchScore from the counts (do not guess it — and note that this arithmetic is re-done in code from your requirementAnalysis, experienceFit, and roleAlignment, so a guessed number will simply be discarded and replaced):
    - requiredCoverage = required-found / required-total (1 if there are no required items).
    - preferredCoverage = preferred-found / preferred-total (1 if there are no preferred items).
    - experienceFit = 1 if the resume's experience/seniority clearly meets the posting's ask, 0.5 if unclear either way, 0 if clearly below (e.g. posting wants 5+ years, resume shows under 2). Output it as its own field.
-   - matchScore = round(requiredCoverage*75 + preferredCoverage*15 + experienceFit*10), clamped 0-100.
-   Because the score is recomputed from your verdicts, the accuracy that matters is in requirementAnalysis: getting each kind ("required" vs "preferred") and status ("found" vs "missing") right IS getting the score right.
-5. matchScore must stay consistent with your own lists — a resume missing most required items cannot score high. Base every judgment strictly on what the two texts actually say. The same resume and posting must always produce the same result.`;
+   - roleAlignment = whether the resume is for the SAME KIND of role/profession this posting is for, independent of any incidental skill overlap: 1 = same field, 0.5 = a genuinely adjacent field with real transferable overlap (e.g. QA engineer vs software developer), 0 = a fundamentally different occupation where overlap is only incidental. Judge it decisively — a software/IT resume against a waiter, nurse, driver, or accountant posting is 0, even if a generic skill like "customer service" or "communication" appears in both. Output it as its own field.
+   - skillScore = requiredCoverage*75 + preferredCoverage*15 + experienceFit*10.
+   - matchScore = round(skillScore * (0.3 + 0.7*roleAlignment)), clamped 0-100. The roleAlignment factor is deliberate: a strong skills overlap in the WRONG profession still scores low, because the candidate is not actually a fit for that job.
+   Because the score is recomputed from your verdicts, the accuracy that matters is in requirementAnalysis, experienceFit, and roleAlignment: getting each kind ("required" vs "preferred"), each status ("found" vs "missing"), and the role fit right IS getting the score right.
+5. matchScore must stay consistent with your own analysis — a resume missing most required items cannot score high, and a resume for a plainly different occupation cannot score high no matter how many generic keywords coincide. Your atsNotes and suggestions must not contradict the score: if you are about to tell the candidate "this role is for a X while your resume is for a Y", that is a roleAlignment of 0, and the score must reflect it. Base every judgment strictly on what the two texts actually say. The same resume and posting must always produce the same result.`;
 
 // Extra emphasis for lite/fast models only (see isLiteModel in fallback.ts —
 // Gemini's flash-lite tier and OpenRouter's small/sparse free models). Fast
@@ -138,7 +140,8 @@ ${SUGGESTIONS_METHOD}
 Return a JSON object with exactly these fields:
 - requirementAnalysis: array — your working, filled in FIRST (see step 1-2 above). One object per requirement, each with: requirement (string), kind ("required" or "preferred"), resumeEvidence (string or null), status ("found" or "missing").
 - experienceFit: number — fill in SECOND, straight after requirementAnalysis. 1 if the resume's experience/seniority clearly meets the posting's ask, 0.5 if unclear either way, 0 if clearly below (see step 4 above)
-- matchScore: integer 0-100, computed from requirementAnalysis and experienceFit via step 4 above — output only the final integer
+- roleAlignment: number — fill in THIRD, right after experienceFit. 1 = same profession/field as the posting, 0.5 = a genuinely adjacent/transferable field, 0 = a fundamentally different occupation where any skill overlap is incidental (see step 4 above)
+- matchScore: integer 0-100, computed from requirementAnalysis, experienceFit, and roleAlignment via step 4 above — output only the final integer
 - matchingSkills: string[], skills/technologies present in both the resume and the posting
 - missingSkills: string[], skills/technologies the posting wants but the resume doesn't show
 - missingKeywords: string[], other important keywords from the posting absent from the resume (useful for ATS keyword matching). Only terms a resume could plausibly contain — a real technology, tool, method, domain, or qualification. Never metrics or scale figures lifted from the posting ("50M+"), and never vague traits ("communication")

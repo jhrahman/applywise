@@ -182,6 +182,19 @@ const experienceFitJsonSchema = {
     "Fill this in immediately after requirementAnalysis, before matchScore. 1 if the resume's experience/seniority clearly meets the posting's ask, 0.5 if unclear either way, 0 if clearly below (e.g. posting wants 5+ years, resume shows under 2).",
 } as const;
 
+// The score's guard against a strong skills overlap in the WRONG profession.
+// requiredCoverage rewards matched requirements, but a sparse posting for a
+// different occupation (a waiter role, say) can still show a high coverage off
+// incidental overlap like "customer service" — leaving the headline score
+// implying a fit the candidate plainly doesn't have. roleAlignment captures
+// "is this even the right kind of job", and computeMatchScore() uses it to gate
+// the coverage-based score so a wrong-occupation match lands low regardless.
+const roleAlignmentJsonSchema = {
+  type: "number",
+  description:
+    "Fill this in immediately after experienceFit, before matchScore. How well the candidate's overall profession/field matches the KIND of role this posting is for, independent of any incidental skill overlap. 1 = same field/occupation (the resume is clearly for this type of role). 0.5 = a different but genuinely adjacent field with real transferable overlap (e.g. QA engineer vs software developer, sysadmin vs DevOps). 0 = a fundamentally different occupation where any overlap is incidental (e.g. a software/IT resume against a waiter, nurse, driver, or accountant posting). Be decisive: if the resume and posting are clearly different professions, use 0 even when a generic skill like 'customer service' or 'communication' appears in both.",
+} as const;
+
 // Universal reasoning schema: matchAnalysisJsonSchema with the
 // requirementAnalysis scratchpad prepended (declared first, so field-order
 // puts it before matchScore). Standard JSON Schema only — safe to hand to
@@ -191,9 +204,15 @@ export const matchAnalysisThoroughJsonSchema = {
   properties: {
     requirementAnalysis: requirementAnalysisJsonSchema,
     experienceFit: experienceFitJsonSchema,
+    roleAlignment: roleAlignmentJsonSchema,
     ...matchAnalysisJsonSchema.properties,
   },
-  required: ["requirementAnalysis", "experienceFit", ...matchAnalysisJsonSchema.required],
+  required: [
+    "requirementAnalysis",
+    "experienceFit",
+    "roleAlignment",
+    ...matchAnalysisJsonSchema.required,
+  ],
 } as const;
 
 // Gemini-only variant: adds propertyOrdering, a Gemini-specific Schema field
@@ -205,6 +224,7 @@ export const matchAnalysisThoroughGeminiJsonSchema = {
   propertyOrdering: [
     "requirementAnalysis",
     "experienceFit",
+    "roleAlignment",
     "matchScore",
     "matchingSkills",
     "missingSkills",
@@ -249,6 +269,10 @@ const scratchpadSchema = z.object({
   requirementAnalysis: z.array(requirementEntrySchema).min(1),
   // Models sometimes emit 0/0.5/1 as a string, or omit it entirely.
   experienceFit: z.coerce.number().min(0).max(1).catch(1),
+  // Defaults to 1 (no role penalty) when a model omits it, so an older/lite
+  // model that doesn't emit the field scores exactly as it did before rather
+  // than being silently penalised.
+  roleAlignment: z.coerce.number().min(0).max(1).catch(1),
 });
 
 /**
@@ -267,17 +291,31 @@ const scratchpadSchema = z.object({
  *
  * The model's own matchScore is kept only as a fallback for responses that
  * lack a usable scratchpad.
+ *
+ * roleAlignment gates the whole thing (default 1 = no effect). skillScore
+ * measures how well the skills and seniority line up; roleAlignment measures
+ * whether it's even the right kind of job, and multiplies the result by
+ * 0.3..1.0. So a resume that covers a wrong-occupation posting's few generic
+ * requirements (skillScore high) but is from a different profession
+ * (roleAlignment 0) is pulled down to ~30% of that score — which is the whole
+ * point: a Software QA resume must not read as a strong match for a waiter
+ * role just because both mention "customer service". A same-field resume
+ * (roleAlignment 1) is unaffected, preserving every existing score.
  */
 export function computeMatchScore(
   requirements: { kind: "required" | "preferred"; status: "found" | "missing" }[],
-  experienceFit: number
+  experienceFit: number,
+  roleAlignment = 1
 ): number {
   const coverage = (list: typeof requirements) =>
     list.length === 0 ? 1 : list.filter((r) => r.status === "found").length / list.length;
 
   const required = requirements.filter((r) => r.kind === "required");
   const preferred = requirements.filter((r) => r.kind === "preferred");
-  const score = coverage(required) * 75 + coverage(preferred) * 15 + experienceFit * 10;
+  const skillScore = coverage(required) * 75 + coverage(preferred) * 15 + experienceFit * 10;
+
+  const alignment = Math.min(1, Math.max(0, roleAlignment));
+  const score = skillScore * (0.3 + 0.7 * alignment);
   return Math.min(100, Math.max(0, Math.round(score)));
 }
 
@@ -307,7 +345,8 @@ export function parseMatchAnalysis(raw: unknown): MatchAnalysis {
     ...analysis,
     matchScore: computeMatchScore(
       scratchpad.data.requirementAnalysis,
-      scratchpad.data.experienceFit
+      scratchpad.data.experienceFit,
+      scratchpad.data.roleAlignment
     ),
   };
 }

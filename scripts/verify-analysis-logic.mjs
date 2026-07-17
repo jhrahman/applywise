@@ -103,6 +103,40 @@ check(
 );
 check(computeMatchScore([], 1) === 100, "a posting with no parsed requirements doesn't crash");
 
+// --- roleAlignment gates a wrong-occupation match ---------------------------
+// The waiter-vs-QA case: a sparse posting whose few generic requirements the
+// resume happens to cover (high skillScore) must NOT score high when the
+// resume is for a different profession. roleAlignment 0 multiplies by 0.3.
+check(
+  computeMatchScore([{ kind: "required", status: "found" }], 1, 1) === 100,
+  "same-field role (alignment 1) is unaffected — existing scores preserved"
+);
+check(
+  computeMatchScore([{ kind: "required", status: "found" }], 1, 0) === 30,
+  "wrong-occupation match (alignment 0) is gated down to ~30% (100 -> 30)"
+);
+check(
+  computeMatchScore([{ kind: "required", status: "found" }], 1, 0.5) === 65,
+  "adjacent/transferable field (alignment 0.5) is moderately reduced (100 -> 65)"
+);
+check(
+  computeMatchScore([{ kind: "required", status: "found" }], 1) === 100,
+  "roleAlignment defaults to 1 when omitted (backward compatible)"
+);
+// End to end through the parser: the scratchpad carries roleAlignment.
+check(
+  parseMatchAnalysis({
+    ...shell, requirementAnalysis: reqs("required", "found"), experienceFit: 1, roleAlignment: 0,
+  }).matchScore === 30,
+  "parser applies roleAlignment from the scratchpad (all-found + wrong field => 30, not 100)"
+);
+check(
+  parseMatchAnalysis({
+    ...shell, requirementAnalysis: reqs("required", "found"), experienceFit: 1,
+  }).matchScore === 100,
+  "a scratchpad without roleAlignment still scores as before (defaults to 1)"
+);
+
 // --- response envelope ------------------------------------------------------
 // Asking for JSON doesn't reliably get only JSON: the prompt-only models
 // (DeepSeek/GLM/xAI and the OpenRouter free models without structured output)
