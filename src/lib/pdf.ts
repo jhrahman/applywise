@@ -1,5 +1,6 @@
 import * as pdfjsLib from "pdfjs-dist";
 import pdfWorker from "pdfjs-dist/build/pdf.worker.mjs?url";
+import { extractPageText, isTextItem, tidyResumeText } from "./pdf-text";
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = pdfWorker;
 
@@ -15,13 +16,13 @@ export async function extractTextFromPdf(file: File): Promise<string> {
 
   for (let pageNum = 1; pageNum <= pdf.numPages; pageNum++) {
     const page = await pdf.getPage(pageNum);
+    // Normalization (the default) folds ligature codepoints like "ﬂ" into
+    // plain "fl" — necessary but not sufficient on its own, since it can't do
+    // anything about a word split across separate text items. See pdf-text.ts.
     const content = await page.getTextContent();
-    const text = content.items
-      .map((item) => ("str" in item ? item.str : ""))
-      .join(" ");
-    pages.push(text);
+    pages.push(extractPageText(content.items.filter(isTextItem)));
   }
 
-  const text = pages.join("\n\n").trim();
+  const text = tidyResumeText(pages);
   return text.length > MAX_RESUME_CHARS ? text.slice(0, MAX_RESUME_CHARS) + " …[truncated]" : text;
 }

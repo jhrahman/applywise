@@ -7,6 +7,19 @@ export interface AiClient {
 
 export class AiRequestError extends Error {}
 
+/**
+ * The provider answered, but the body isn't usable: not JSON, or JSON that
+ * doesn't fit the schema.
+ *
+ * Its own type rather than a bare Error so the fallback chain can recognise it
+ * (see isRetryableAiError). Whether a model wraps its JSON in prose or drops a
+ * required field is a quirk of that model, not of the request — so, unlike a
+ * bad API key, the next model in the chain has a real chance of succeeding and
+ * this is worth retrying. It extends AiRequestError so describeAiError()
+ * surfaces the message as-is; keep messages user-readable.
+ */
+export class AiResponseFormatError extends AiRequestError {}
+
 // Match scoring should behave like a computation over the resume/posting
 // text, not a creative task — a low temperature minimizes sampling noise so
 // re-analyzing the same resume against the same posting gives (close to) the
@@ -15,35 +28,66 @@ export class AiRequestError extends Error {}
 export const MATCH_ANALYSIS_TEMPERATURE = 0.1;
 export const INTERVIEW_QUESTIONS_TEMPERATURE = 0.5;
 
-// Gemini match analysis can fall back across several models (see
-// gemini-fallback.ts) — a bounded per-attempt timeout means a stuck/
-// overloaded model gets abandoned for the next one instead of eating a full
-// 30s+ wait every retry. Set a little higher than the old 15s now that every
-// model produces the requirementAnalysis enumeration (more output = more
-// time), so a model that's genuinely working doesn't get killed mid-answer.
-// Other providers/calls keep fetchWithTimeout's default since they have no
-// fallback to fall through to.
-export const MATCH_ANALYSIS_TIMEOUT_MS = 20_000;
+// Gemini and OpenRouter match analysis can fall back across several models
+// (see fallback.ts) — a bounded per-attempt timeout means a stuck/overloaded
+// model gets abandoned for the next one instead of hanging the analysis.
+//
+// These values look far larger than the 20s/30s they replaced, but they are
+// not a loosening — they're the first values that actually apply. The old
+// timeout cleared its timer as soon as fetch() resolved, which happens when
+// response *headers* arrive (measured: 0.7s), leaving the model's entire
+// generation phase unbounded. Nothing was ever capped at 20s, so the 20s was
+// never tested against real generation times. fetchTextWithTimeout below now
+// holds the timer until the body is read, which makes the number real for the
+// first time — so it has to clear a genuinely working model's slowest run, or
+// it would start killing analyses that succeed today.
+//
+// Measured end-to-end match-analysis times on OpenRouter's free tier: hy3
+// 13s, gemma-4-26b 22s, nemotron-super-120b 55s, gpt-oss-20b 105s,
+// nemotron-ultra-550b 196s. Free endpoints are heavily shared and slow, hence
+// OpenRouter's own far higher cap. Gemini's is set well above its typical few
+// seconds while still bounding a true hang.
+export const MATCH_ANALYSIS_TIMEOUT_MS = 90_000;
 
 // Lite models additionally get the anti-skim nudge and are the last resort in
 // the fallback chain — nothing follows them, so a timeout here means total
 // failure. Give that path extra headroom so a large enumeration finishes
 // instead of getting killed mid-reasoning.
-export const MATCH_ANALYSIS_THOROUGH_TIMEOUT_MS = 30_000;
+export const MATCH_ANALYSIS_THOROUGH_TIMEOUT_MS = 120_000;
 
-export async function fetchWithTimeout(
+// A timeout only costs real time when a model is genuinely stuck: the common
+// free-tier failure is a 429, which comes back in ~0.3s and hops to the next
+// model immediately. So this is generous enough for the slowest measured model
+// (196s, and 220s on a longer resume) rather than tuned to hop early. Stays
+// under Chrome's 5-minute MV3 service-worker ceiling. Applies to interview
+// questions too, not just match analysis — same models, same slowness.
+export const OPENROUTER_TIMEOUT_MS = 240_000;
+
+/**
+ * Fetches and reads the full body under a single deadline.
+ *
+ * The body read is the point: `fetch` resolves once headers are in, but an LLM
+ * sends headers almost immediately and then streams for as long as it takes to
+ * generate. Timing out only the fetch therefore bounds nothing that matters.
+ * The timer is cleared after `.text()` completes, so `timeoutMs` covers the
+ * whole exchange.
+ */
+export async function fetchTextWithTimeout(
   input: string,
   init: RequestInit,
-  timeoutMs = 30_000
-): Promise<Response> {
+  timeoutMs = 90_000
+): Promise<{ response: Response; body: string }> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
     const response = await fetch(input, { ...init, signal: controller.signal });
-    return response;
+    const body = await response.text();
+    return { response, body };
   } catch (err) {
     if (err instanceof Error && err.name === "AbortError") {
-      throw new AiRequestError(`Request to ${new URL(input).host} timed out.`);
+      throw new AiRequestError(
+        `Request to ${new URL(input).host} timed out after ${Math.round(timeoutMs / 1000)}s.`
+      );
     }
     throw new AiRequestError(
       `Could not reach ${new URL(input).host}. This may be a CORS or network issue — see the README's CORS note.`
@@ -57,6 +101,15 @@ const RATE_LIMIT_HINTS: Record<string, string> = {
   Gemini:
     "Check your usage at https://aistudio.google.com/usage — free-tier quotas vary a lot by model. " +
     "Try a lighter/flash-lite model on the Setup page, or wait a bit and retry (per-minute limits reset quickly; daily limits reset at midnight Pacific time).",
+  // Two separate limits, and the difference decides whether falling back helps.
+  // Verified live: one ":free" model returned "temporarily rate-limited
+  // upstream" while other free models answered fine in the same run — so a 429
+  // is usually that one model's upstream host, and auto-fallback routes around
+  // it. The per-account daily cap on free models is the case it can't route
+  // around, since that limits every free model at once.
+  OpenRouter:
+    "A \":free\" model is usually rate-limited on its own upstream host, so leaving auto-fallback on (Setup page) lets another free model take over. " +
+    "If every free model is limited, you've likely hit the shared daily cap on free models instead — check https://openrouter.ai/activity. It resets daily, and adding credits raises it.",
   OpenAI: "Check your usage and rate limits at https://platform.openai.com/usage.",
   Anthropic: "Check your usage and rate limits at https://console.anthropic.com/settings/usage.",
   DeepSeek: "Check your usage and rate limits at https://platform.deepseek.com/usage.",

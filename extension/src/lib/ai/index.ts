@@ -1,6 +1,7 @@
 import type { ProviderSettings } from "../types";
 import type { AiClient } from "./client";
 import { createGeminiClient } from "./gemini";
+import { createOpenRouterClient } from "./openrouter";
 import { createOpenAiClient } from "./openai";
 import { createAnthropicClient } from "./anthropic";
 import { createDeepSeekClient } from "./deepseek";
@@ -14,6 +15,8 @@ export function getAiClient(settings: ProviderSettings): AiClient {
   switch (settings.provider) {
     case "gemini":
       return createGeminiClient(settings.apiKey, settings.model);
+    case "openrouter":
+      return createOpenRouterClient(settings.apiKey, settings.model);
     case "openai":
       return createOpenAiClient(settings.apiKey, settings.model);
     case "anthropic":

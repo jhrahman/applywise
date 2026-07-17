@@ -9,78 +9,29 @@ import {
   RefreshCw,
   Monitor,
   ArrowRight,
+  Shuffle,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select } from "@/components/ui/select";
+import { Switch } from "@/components/ui/switch";
 import { AnimatedCheckmark } from "@/components/ui/animated-checkmark";
 import { extractTextFromPdf } from "@/lib/pdf";
 import { getItem, setItem, STORAGE_KEYS } from "@/lib/storage";
+import { cn } from "@/lib/utils";
 import { useExtensionVersion } from "@/hooks/useExtensionVersion";
+import { FALLBACK_PROVIDERS, MODELS, PROVIDER_OPTIONS } from "./setup-models";
 import type { AiProvider, ProviderSettings, Resume } from "@/types";
 
 const MAX_RESUMES = 3;
-
-// Model IDs below are verified against each provider's own docs (see chat
-// history / commit notes) rather than guessed — providers retire IDs over
-// time though, so if one 404s, switch to "Custom model ID" on this page and
-// grab the current one from the provider's own dashboard/docs.
-const MODELS: Record<AiProvider, { label: string; value: string }[]> = {
-  // Ongoing free tier (rate-limited, no card required).
-  gemini: [
-    { label: "Gemini 3 Flash Preview — confirmed working, recommended", value: "gemini-3-flash-preview" },
-    { label: "Gemini 3.5 Flash — flagship", value: "gemini-3.5-flash" },
-    { label: "Gemini 3.1 Pro Preview — strongest reasoning", value: "gemini-3.1-pro-preview" },
-    { label: "Gemini Flash Latest — always points at newest Flash", value: "gemini-flash-latest" },
-    { label: "Gemini Pro Latest — always points at newest Pro", value: "gemini-pro-latest" },
-    { label: "Gemini 3.1 Flash Lite — fastest, but shallower skill matching", value: "gemini-3.1-flash-lite" },
-    {
-      label: "Gemini Flash Lite Latest — fastest, but shallower skill matching",
-      value: "gemini-flash-lite-latest",
-    },
-  ],
-  // New-account trial credits (not an ongoing free tier), then pay-as-you-go.
-  deepseek: [
-    { label: "DeepSeek V4 Flash — fast, cheap", value: "deepseek-v4-flash" },
-    { label: "DeepSeek V4 Pro — flagship reasoning", value: "deepseek-v4-pro" },
-  ],
-  glm: [
-    { label: "GLM-5 Turbo — fast, cost-efficient", value: "glm-5-turbo" },
-    { label: "GLM-5.2 — flagship, coding/agentic", value: "glm-5.2" },
-    { label: "GLM-4.6 — previous generation", value: "glm-4.6" },
-  ],
-  // Paid API key required, no free tier.
-  openai: [
-    { label: "GPT-5.6 Luna — cost-sensitive", value: "gpt-5.6-luna" },
-    { label: "GPT-5.6 Terra — balanced", value: "gpt-5.6-terra" },
-    { label: "GPT-5.6 Sol — flagship reasoning", value: "gpt-5.6-sol" },
-  ],
-  anthropic: [
-    { label: "Claude Haiku 4.5 — fast, economical", value: "claude-haiku-4-5-20251001" },
-    { label: "Claude Sonnet 5 — agentic default", value: "claude-sonnet-5" },
-    { label: "Claude Opus 4.8 — flagship", value: "claude-opus-4-8" },
-  ],
-  xai: [
-    { label: "Grok Code Fast 1 — fast, coding-focused", value: "grok-code-fast-1" },
-    { label: "Grok 4.5 — flagship", value: "grok-4.5" },
-  ],
-};
-
-const PROVIDER_OPTIONS: { value: AiProvider; label: string }[] = [
-  { value: "gemini", label: "Gemini — free tier" },
-  { value: "deepseek", label: "DeepSeek — free trial credits" },
-  { value: "glm", label: "GLM (Zhipu / Z.ai) — free trial credits" },
-  { value: "openai", label: "OpenAI — paid" },
-  { value: "anthropic", label: "Anthropic — paid" },
-  { value: "xai", label: "Grok (xAI) — paid" },
-];
 
 const DEFAULT_SETTINGS: ProviderSettings = {
   provider: "gemini",
   apiKey: "",
   model: MODELS.gemini[0].value,
+  fallbackEnabled: true,
 };
 
 const CUSTOM_MODEL = "__custom__";
@@ -108,7 +59,11 @@ export function Setup() {
       getItem<ProviderSettings>(STORAGE_KEYS.providerSettings, DEFAULT_SETTINGS),
     ]).then(([storedResumes, storedSettings]) => {
       setResumes(storedResumes);
-      setSettings(storedSettings);
+      // Settings saved before the fallback toggle shipped have no
+      // fallbackEnabled field. Default those to on: Gemini fallback used to be
+      // unconditional, so reading `undefined` as "off" would quietly take away
+      // behavior those users already rely on.
+      setSettings({ ...storedSettings, fallbackEnabled: storedSettings.fallbackEnabled ?? true });
       setLoaded(true);
     });
   }, []);
@@ -328,6 +283,12 @@ export function Setup() {
             />
           </div>
 
+          <FallbackToggle
+            provider={settings.provider}
+            enabled={settings.fallbackEnabled ?? true}
+            onChange={(fallbackEnabled) => setSettings({ ...settings, fallbackEnabled })}
+          />
+
           <div className="flex items-center gap-3">
             <Button onClick={handleSaveSettings} disabled={saving}>
               {saving && <Loader2 size={16} className="animate-spin" />}
@@ -346,6 +307,64 @@ export function Setup() {
           {saveError && <p className="text-sm text-[var(--status-bad-text)]">{saveError}</p>}
         </CardContent>
       </Card>
+    </div>
+  );
+}
+
+/**
+ * The one global switch over the whole fallback strategy. On, a busy or
+ * rate-limited model hands off to the next free one so an analysis still
+ * completes; off, only the selected model is ever called — which is what you
+ * want when comparing models, since a silent hand-off would attribute another
+ * model's output to the one you picked.
+ *
+ * It stays visible for every provider (it's a global setting, and hiding it
+ * would make it look like it had vanished) but is inert for the paid and
+ * trial-credit ones, which have no free models to fall back to.
+ */
+function FallbackToggle({
+  provider,
+  enabled,
+  onChange,
+}: {
+  provider: AiProvider;
+  enabled: boolean;
+  onChange: (enabled: boolean) => void;
+}) {
+  const supported = FALLBACK_PROVIDERS.includes(provider);
+  const providerLabel = provider === "openrouter" ? "OpenRouter" : "Gemini";
+
+  return (
+    <div
+      className={cn(
+        "flex items-start gap-3 rounded-lg border border-[var(--border)] px-4 py-3",
+        !supported && "opacity-60"
+      )}
+    >
+      <Shuffle size={16} className="mt-0.5 shrink-0 text-accent-1" />
+      <div className="flex min-w-0 flex-1 flex-col gap-1">
+        <Label className="cursor-default">Auto-fallback to other free models</Label>
+        <p className="text-xs text-[var(--fg-dim)]">
+          {supported ? (
+            <>
+              If your chosen model is busy or rate-limited, keep trying other free{" "}
+              {providerLabel} models — strongest first, fastest last — until one answers. Turn
+              off to analyze with only the model selected above.
+            </>
+          ) : (
+            <>
+              Only available for Gemini and OpenRouter, the providers with free models to fall
+              back to. Analyses always use the model selected above.
+            </>
+          )}
+        </p>
+      </div>
+      <Switch
+        checked={supported && enabled}
+        onCheckedChange={onChange}
+        disabled={!supported}
+        aria-label="Auto-fallback to other free models"
+      />
     </div>
   );
 }

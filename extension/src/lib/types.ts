@@ -6,12 +6,27 @@ export interface Resume {
   fileName: string;
 }
 
-export type AiProvider = "gemini" | "openai" | "anthropic" | "deepseek" | "glm" | "xai";
+export type AiProvider =
+  | "gemini"
+  | "openrouter"
+  | "openai"
+  | "anthropic"
+  | "deepseek"
+  | "glm"
+  | "xai";
 
 export interface ProviderSettings {
   provider: AiProvider;
   apiKey: string;
   model: string;
+  // Whether a busy/rate-limited model may fall back to other free models (see
+  // ai/fallback.ts). Only meaningful for providers with a free tier worth
+  // hopping across — Gemini and OpenRouter. Optional because settings saved
+  // before this shipped are already in users' storage without it; read it via
+  // isFallbackEnabled() in ai/fallback.ts rather than directly, so those old
+  // records default to enabled instead of silently losing the fallback they
+  // already had.
+  fallbackEnabled?: boolean;
 }
 
 export interface JobPosting {

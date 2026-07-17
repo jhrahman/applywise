@@ -19,6 +19,8 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Reveal } from "@/components/ui/reveal";
+import { useCountUp } from "@/hooks/useCountUp";
 import { getItem, setItem, STORAGE_KEYS } from "@/lib/storage";
 import { bridgeGenerateInterviewQuestions } from "@/lib/bridge";
 import { convertToBdt, formatBdt } from "@/lib/currency";
@@ -55,6 +57,52 @@ const TONE_VARS = {
   bad: { text: "var(--status-bad-text)", bg: "var(--status-bad-bg)", border: "var(--status-bad-border)" },
   warn: { text: "var(--status-warn-text)", bg: "var(--status-warn-bg)", border: "var(--status-warn-border)" },
 } as const;
+
+/**
+ * Entrance choreography, in milliseconds, gathered here because the timings
+ * only make sense relative to each other — scattered across the components
+ * they'd be impossible to reason about or re-tune.
+ *
+ * This page opens in a fresh tab the moment an analysis finishes, so it's the
+ * payoff for a wait the user just sat through. Everything therefore lands
+ * top-to-bottom in reading order: the cards arrive as whole objects first, then
+ * the verdict fills in inside the hero card. That ordering is the point — the
+ * eye is led down the page instead of being asked to re-scan a screen that
+ * appeared all at once.
+ *
+ * Two rules keep it from becoming a wait of its own:
+ *  - Nothing the user needs is gated behind the animation. Every card is
+ *    readable by ~460ms; the later steps only add detail that's already legible
+ *    underneath.
+ *  - The cascade stays under a second. Longer and a stagger stops reading as
+ *    polish and starts reading as a slow page.
+ */
+const REVEAL = {
+  pageHeader: 0,
+  heroCard: 60,
+  interviewCard: 130,
+  sidebar: 200,
+  // The score counts rather than fades, so it starts while the hero card is
+  // still arriving. It isn't subject to the compounding problem below, and
+  // holding it back would park a static "0 /100" in front of the user for a
+  // quarter of a second — long enough to read as a real score of zero before
+  // it starts moving. By the time the card is legible the number is climbing.
+  score: 180,
+  // These *do* fade, so they wait for the hero card's own entrance to land
+  // (60 + 400ms) and the card fills in after arriving whole. Firing earlier
+  // fades a child in through a parent that's still fading — the two opacities
+  // multiply, and the result looks muddy rather than layered.
+  chips: 480,
+  chipStagger: 60,
+  notes: 660,
+  noteStagger: 60,
+} as const;
+
+// The hero metric, and the one number the whole page exists to deliver — so it
+// gets the only animation on the page that draws attention to itself rather
+// than just easing content in. Long enough to register as counting; short
+// enough that nobody waits on it to read the number.
+const SCORE_COUNT_MS = 650;
 
 export function Results() {
   const [searchParams] = useSearchParams();
@@ -114,50 +162,62 @@ export function Results() {
 
   return (
     <div className="mx-auto flex w-full max-w-[1400px] flex-col gap-6">
-      <div>
+      <Reveal delay={REVEAL.pageHeader}>
         <h1 className="mb-2 text-2xl font-bold tracking-tight">Match results</h1>
         <p className="text-sm text-[var(--fg-dim)]">
           Results open here once the extension finishes analyzing a job posting.
         </p>
-      </div>
+      </Reveal>
 
       {!entry ? (
-        <Card className="max-w-2xl">
-          <CardHeader>
-            <CardTitle>No analysis loaded yet</CardTitle>
-            <CardDescription>
-              Click "Analyze with Applywise" on a job posting to see your match score, missing
-              skills, and ATS notes here.
-            </CardDescription>
-          </CardHeader>
-          <CardContent />
-        </Card>
+        <Reveal delay={REVEAL.heroCard} variant="block">
+          <Card className="max-w-2xl">
+            <CardHeader>
+              <CardTitle>No analysis loaded yet</CardTitle>
+              <CardDescription>
+                Click "Analyze with Applywise" on a job posting to see your match score, missing
+                skills, and ATS notes here.
+              </CardDescription>
+            </CardHeader>
+            <CardContent />
+          </Card>
+        </Reveal>
       ) : (
         <div className="grid grid-cols-1 items-start gap-6 lg:grid-cols-[minmax(0,1fr)_360px]">
           <div className="flex min-w-0 flex-col gap-6">
-            <JobResultCard entry={entry} onStatusChange={updateStatus} />
-            <InterviewQuestionsCard
-              entry={entry}
-              loading={interviewLoading}
-              error={interviewError}
-              onGenerate={handleGenerateInterviewQuestions}
-            />
+            <Reveal delay={REVEAL.heroCard} variant="block">
+              <JobResultCard entry={entry} onStatusChange={updateStatus} />
+            </Reveal>
+            <Reveal delay={REVEAL.interviewCard} variant="block">
+              <InterviewQuestionsCard
+                entry={entry}
+                loading={interviewLoading}
+                error={interviewError}
+                onGenerate={handleGenerateInterviewQuestions}
+              />
+            </Reveal>
           </div>
+          {/* The sidebar arrives last: it's reference material, not the answer
+              the user opened this tab for. */}
           <div className="flex flex-col gap-6 lg:sticky lg:top-6">
             {history.length > 0 && (
-              <SessionHistory
-                history={history}
-                activeId={entry.id}
-                onRemove={removeEntry}
-                onClearAll={clearHistory}
-              />
+              <Reveal delay={REVEAL.sidebar} variant="block">
+                <SessionHistory
+                  history={history}
+                  activeId={entry.id}
+                  onRemove={removeEntry}
+                  onClearAll={clearHistory}
+                />
+              </Reveal>
             )}
           </div>
         </div>
       )}
 
       {!entry && history.length > 0 && (
-        <SessionHistory history={history} onRemove={removeEntry} onClearAll={clearHistory} />
+        <Reveal delay={REVEAL.sidebar} variant="block">
+          <SessionHistory history={history} onRemove={removeEntry} onClearAll={clearHistory} />
+        </Reveal>
       )}
     </div>
   );
@@ -165,12 +225,22 @@ export function Results() {
 
 function ScoreMeter({ score }: { score: number }) {
   const clamped = Math.max(0, Math.min(100, score));
+  // Colour and label come from the final score, never the in-flight one: a
+  // count-up from 0 crosses every band on its way, and re-colouring as it went
+  // would flash red-amber-green on every strong match.
   const band = scoreBand(clamped);
+  const shown = useCountUp(clamped, { delay: REVEAL.score, duration: SCORE_COUNT_MS });
+
   return (
     <div className="flex flex-col gap-4 xs:flex-row xs:items-center xs:gap-5">
       <div className="flex items-baseline gap-1">
-        <span className="text-4xl font-bold tracking-tight tabular-nums sm:text-5xl" style={{ color: band.text }}>
-          {clamped}
+        <span
+          // tabular-nums keeps every digit the same width, so a number counting
+          // up to 100 doesn't jitter its own layout on each frame.
+          className="text-4xl font-bold tracking-tight tabular-nums sm:text-5xl"
+          style={{ color: band.text }}
+        >
+          {shown}
         </span>
         <span className="text-lg font-semibold text-[var(--fg-dim)]">/100</span>
       </div>
@@ -181,11 +251,18 @@ function ScoreMeter({ score }: { score: number }) {
             {band.label}
           </span>
         </div>
-        <div className="h-2.5 overflow-hidden rounded-full" style={{ background: band.bg }}>
-          <div
-            className="h-full rounded-full transition-all duration-700"
-            style={{ width: `${clamped}%`, background: band.text }}
-          />
+        {/* The bar is driven off the same counted value as the digits rather
+            than a CSS transition of its own — two clocks would visibly drift. */}
+        <div
+          className="h-2.5 overflow-hidden rounded-full"
+          style={{ background: band.bg }}
+          role="progressbar"
+          aria-valuenow={clamped}
+          aria-valuemin={0}
+          aria-valuemax={100}
+          aria-label={`Match score: ${clamped} out of 100 — ${band.label}`}
+        >
+          <div className="h-full rounded-full" style={{ width: `${shown}%`, background: band.text }} />
         </div>
       </div>
     </div>
@@ -209,10 +286,7 @@ function ChipGroup({
   const v = TONE_VARS[tone];
 
   return (
-    <div
-      className="opacity-0"
-      style={{ animation: "reveal-row 0.5s ease forwards", animationDelay: `${delay}ms` }}
-    >
+    <Reveal delay={delay}>
       <div className="mb-2 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-[var(--fg-dim)]">
         {icon}
         {label}
@@ -228,7 +302,7 @@ function ChipGroup({
           </span>
         ))}
       </div>
-    </div>
+    </Reveal>
   );
 }
 
@@ -251,10 +325,7 @@ function BulletList({
 }) {
   if (items.length === 0 && !emptyState) return null;
   return (
-    <div
-      className="opacity-0"
-      style={{ animation: "reveal-row 0.5s ease forwards", animationDelay: `${delay}ms` }}
-    >
+    <Reveal delay={delay}>
       <div className="mb-2 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-[var(--fg-dim)]">
         {icon}
         {label}
@@ -277,7 +348,7 @@ function BulletList({
           ))}
         </ul>
       )}
-    </div>
+    </Reveal>
   );
 }
 
@@ -488,21 +559,21 @@ function JobResultCard({
             items={analysis.matchingSkills}
             icon={<CheckCircle2 size={13} />}
             tone="good"
-            delay={100}
+            delay={REVEAL.chips}
           />
           <ChipGroup
             label="Missing skills"
             items={analysis.missingSkills}
             icon={<XCircle size={13} />}
             tone="bad"
-            delay={200}
+            delay={REVEAL.chips + REVEAL.chipStagger}
           />
           <ChipGroup
             label="Missing keywords"
             items={analysis.missingKeywords}
             icon={<KeyRound size={13} />}
             tone="warn"
-            delay={300}
+            delay={REVEAL.chips + REVEAL.chipStagger * 2}
           />
         </div>
 
@@ -511,14 +582,14 @@ function JobResultCard({
             label="ATS notes"
             items={analysis.atsNotes}
             icon={<FileWarning size={13} />}
-            delay={400}
+            delay={REVEAL.notes}
             emptyState="No ATS parsing or keyword-matching issues found."
           />
           <BulletList
             label="Suggestions"
             items={analysis.suggestions}
             icon={<Lightbulb size={13} />}
-            delay={500}
+            delay={REVEAL.notes + REVEAL.noteStagger}
           />
         </div>
       </CardContent>
@@ -561,17 +632,21 @@ function InterviewQuestionsCard({
         {entry.interviewQuestions && (
           <div className="flex flex-col gap-3">
             {entry.interviewQuestions.map((qa, i) => (
-              <div
+              // Timed off its own index rather than the REVEAL table: this list
+              // appears when the user clicks Generate, which is a separate
+              // moment from the page opening. Capped so a full 20 questions
+              // don't take 1.2s to finish arriving.
+              <Reveal
                 key={i}
-                className="rounded-lg border border-[var(--border)] p-4 opacity-0"
-                style={{ animation: "reveal-row 0.4s ease forwards", animationDelay: `${i * 60}ms` }}
+                delay={Math.min(i, 8) * 50}
+                className="rounded-lg border border-[var(--border)] p-4"
               >
                 <div className="mb-1.5 flex items-start justify-between gap-3">
                   <p className="text-sm font-semibold">{qa.question}</p>
                   <SourceBadge source={qa.source} />
                 </div>
                 <p className="text-sm text-[var(--fg-dim)]">{qa.suggestedAnswer}</p>
-              </div>
+              </Reveal>
             ))}
           </div>
         )}

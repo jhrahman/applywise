@@ -50,8 +50,9 @@ const ANALYSIS_METHOD = `Follow this procedure exactly — never assign a score 
    Because the score is recomputed from your verdicts, the accuracy that matters is in requirementAnalysis: getting each kind ("required" vs "preferred") and status ("found" vs "missing") right IS getting the score right.
 5. matchScore must stay consistent with your own lists — a resume missing most required items cannot score high. Base every judgment strictly on what the two texts actually say. The same resume and posting must always produce the same result.`;
 
-// Extra emphasis for lite/fast models only (see isLiteGeminiModel in
-// gemini-fallback.ts). Fast models skim multi-step tasks — they judge several
+// Extra emphasis for lite/fast models only (see isLiteModel in fallback.ts —
+// Gemini's flash-lite tier and OpenRouter's small/sparse free models). Fast
+// models skim multi-step tasks — they judge several
 // requirements at once or estimate a score. The worked examples make the
 // per-requirement judgment concrete, which measurably helps smaller models
 // actually follow the procedure rather than approximate it. Flagship models

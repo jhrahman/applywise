@@ -135,10 +135,26 @@ body {
   }
 }
 
+/* Entrance motion comes in two sizes: `reveal-row` for content inside a card
+   (a short 4px lift — enough to read as arriving, not enough to be noticed),
+   and `reveal-block` for whole cards, which travel further because they're
+   bigger and need a longer gesture to feel like one object. See the REVEAL
+   choreography in pages/Results.tsx for how they're timed against each other. */
 @keyframes reveal-row {
   from {
     opacity: 0;
     transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes reveal-block {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
   }
   to {
     opacity: 1;
@@ -170,5 +186,27 @@ body {
   100% {
     opacity: 1;
     transform: scale(1);
+  }
+}
+
+/* Users who ask for reduced motion get the content, not the choreography.
+   Deliberately targeted at decorative entrance/emphasis motion rather than the
+   usual blanket `*` override: that snippet also sets animation-iteration-count
+   to 1, which would freeze every loading spinner mid-turn. A frozen spinner
+   reads as "this app has hung" — strictly worse for the people this setting
+   exists to help. Anything that communicates ongoing work keeps moving.
+
+   Elements below start at opacity-0 and rely on `forwards` to become visible,
+   so this must land them in the finished state, never simply cancel it. */
+@media (prefers-reduced-motion: reduce) {
+  [data-reveal] {
+    animation: none !important;
+    opacity: 1 !important;
+    transform: none !important;
+  }
+
+  [data-theme-transition],
+  body {
+    transition-duration: 0.01ms !important;
   }
 }

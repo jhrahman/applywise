@@ -3,20 +3,20 @@ import { buildInterviewQuestionsPrompt, buildMatchAnalysisPrompt } from "./promp
 import {
   extractJsonPayload,
   interviewQuestionsJsonSchema,
-  interviewQuestionsSchema,
+  parseInterviewQuestions,
   parseMatchAnalysis,
   matchAnalysisThoroughGeminiJsonSchema,
 } from "./schema";
 import {
   assertOk,
-  fetchWithTimeout,
+  fetchTextWithTimeout,
   INTERVIEW_QUESTIONS_TEMPERATURE,
   MATCH_ANALYSIS_TEMPERATURE,
   MATCH_ANALYSIS_THOROUGH_TIMEOUT_MS,
   MATCH_ANALYSIS_TIMEOUT_MS,
   type AiClient,
 } from "./client";
-import { isLiteGeminiModel } from "./gemini-fallback";
+import { isLiteModel } from "./fallback";
 
 const BASE_URL = "https://generativelanguage.googleapis.com/v1beta/models";
 
@@ -28,7 +28,7 @@ async function callGemini(
   temperature: number,
   timeoutMs?: number
 ): Promise<string> {
-  const response = await fetchWithTimeout(
+  const { response, body } = await fetchTextWithTimeout(
     `${BASE_URL}/${model}:generateContent`,
     {
       method: "POST",
@@ -48,7 +48,6 @@ async function callGemini(
     timeoutMs
   );
 
-  const body = await response.text();
   assertOk(response, body, "Gemini");
 
   const data = JSON.parse(body);
@@ -65,7 +64,7 @@ export function createGeminiClient(apiKey: string, model: string): AiClient {
       // score stable run-to-run. Lite models additionally get the anti-skim
       // nudge and a longer timeout, since they skim more and are the slower
       // last resort in the fallback chain.
-      const lite = isLiteGeminiModel(model);
+      const lite = isLiteModel("gemini", model);
       const prompt = buildMatchAnalysisPrompt(resumeText, job, { thorough: lite });
       const text = await callGemini(
         apiKey,
@@ -87,7 +86,7 @@ export function createGeminiClient(apiKey: string, model: string): AiClient {
         interviewQuestionsJsonSchema,
         INTERVIEW_QUESTIONS_TEMPERATURE
       );
-      return interviewQuestionsSchema.parse(extractJsonPayload(text));
+      return parseInterviewQuestions(extractJsonPayload(text));
     },
   };
 }

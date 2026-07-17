@@ -1,14 +1,7 @@
 import { getItem, setItem, STORAGE_KEYS } from "../lib/storage";
 import { APP_URL } from "../lib/config";
 import { getAiClient, AiRequestError } from "../lib/ai";
-import {
-  GEMINI_PREFERRED_MODELS,
-  GEMINI_LITE_MODELS,
-  isLiteGeminiModel,
-  isRetryableGeminiError,
-  RETRIES_PER_PREFERRED_MODEL,
-  RETRY_BACKOFF_MS,
-} from "../lib/ai/gemini-fallback";
+import { withModelFallback, type AttemptInfo } from "../lib/ai/fallback";
 import { browserApi } from "../lib/browser-api";
 import type { Resume, ProviderSettings, JobEntry, JobPosting } from "../lib/types";
 import type {
@@ -19,7 +12,17 @@ import type {
   GenerateInterviewQuestionsResponse,
 } from "../lib/messages";
 
-const DEFAULT_SETTINGS: ProviderSettings = { provider: "gemini", apiKey: "", model: "gemini-3-flash-preview" };
+const DEFAULT_SETTINGS: ProviderSettings = {
+  provider: "gemini",
+  apiKey: "",
+  model: "gemini-3-flash-preview",
+  fallbackEnabled: true,
+};
+
+/** Single place settings are read, so the fallback default is applied uniformly. */
+function loadSettings(): Promise<ProviderSettings> {
+  return getItem<ProviderSettings>(STORAGE_KEYS.providerSettings, DEFAULT_SETTINGS);
+}
 
 browserApi.runtime.onMessage.addListener((message: ExtensionMessage, sender, sendResponse) => {
   if (message.type === "GET_RESUMES") {
@@ -44,81 +47,8 @@ function sendProgress(tabId: number | undefined, text: string): void {
   browserApi.tabs.sendMessage(tabId, message).catch(() => {});
 }
 
-function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
-export interface GeminiAttemptInfo {
-  model: string;
-  attemptNumber: number;
-  maxAttempts: number;
-  previousModel: string | null;
-  usingLiteFallback: boolean;
-}
-
-/**
- * Runs `attempt` with the configured model first; on a timeout/429/high-load
- * error from Gemini, keeps retrying — first the same model a couple more
- * times (a "busy" error is often transient), then the next full-reasoning
- * model, and so on through every model in GEMINI_PREFERRED_MODELS, each
- * with its own retries, before touching a "lite" model at all. Lite models
- * (see gemini-fallback.ts) are a last resort tried once each, only once
- * every full-reasoning model is confirmed down. Other providers (and
- * non-retryable errors, e.g. a bad API key) just run once, since switching
- * models can't fix those. `onAttempt` fires before every attempt so the
- * caller can surface live progress.
- */
-async function withGeminiFallback<T>(
-  settings: ProviderSettings,
-  attempt: (settings: ProviderSettings) => Promise<T>,
-  onAttempt?: (info: GeminiAttemptInfo) => void
-): Promise<{ result: T; modelUsed: string }> {
-  if (settings.provider !== "gemini") {
-    onAttempt?.({ model: settings.model, attemptNumber: 1, maxAttempts: 1, previousModel: null, usingLiteFallback: false });
-    return { result: await attempt(settings), modelUsed: settings.model };
-  }
-
-  const configured = settings.model;
-  const modelOrder = [
-    configured,
-    ...GEMINI_PREFERRED_MODELS.filter((m) => m !== configured),
-    ...GEMINI_LITE_MODELS.filter((m) => m !== configured),
-  ];
-
-  let previousModel: string | null = null;
-  let lastErr: unknown;
-
-  for (let mi = 0; mi < modelOrder.length; mi++) {
-    const model = modelOrder[mi];
-    const isLastModel = mi === modelOrder.length - 1;
-    const maxAttempts = isLiteGeminiModel(model) ? 1 : RETRIES_PER_PREFERRED_MODEL;
-
-    for (let attemptNumber = 1; attemptNumber <= maxAttempts; attemptNumber++) {
-      onAttempt?.({
-        model,
-        attemptNumber,
-        maxAttempts,
-        previousModel: attemptNumber === 1 ? previousModel : null,
-        usingLiteFallback: isLiteGeminiModel(model) && model !== configured,
-      });
-      try {
-        const result = await attempt({ ...settings, model });
-        return { result, modelUsed: model };
-      } catch (err) {
-        lastErr = err;
-        if (!isRetryableGeminiError(err)) throw err;
-        const isLastAttemptForModel = attemptNumber === maxAttempts;
-        if (isLastAttemptForModel && isLastModel) throw err;
-        if (!isLastAttemptForModel) await sleep(RETRY_BACKOFF_MS);
-      }
-    }
-    previousModel = model;
-  }
-  throw lastErr;
-}
-
-/** Turns a GeminiAttemptInfo into a human-readable status line for the floating widget. */
-function describeAttempt(info: GeminiAttemptInfo): string {
+/** Turns an AttemptInfo into a human-readable status line for the floating widget. */
+function describeAttempt(info: AttemptInfo): string {
   if (info.attemptNumber > 1) {
     return `${info.model} still busy — retrying (${info.attemptNumber}/${info.maxAttempts})…`;
   }
@@ -144,7 +74,7 @@ function describeAiError(err: unknown): string {
 async function handleGetResumes(): Promise<GetResumesResponse> {
   const [resumes, settings] = await Promise.all([
     getItem<Resume[]>(STORAGE_KEYS.resumes, []),
-    getItem<ProviderSettings>(STORAGE_KEYS.providerSettings, DEFAULT_SETTINGS),
+    loadSettings(),
   ]);
   return {
     resumes: resumes.map((r) => ({ id: r.id, profileName: r.profileName })),
@@ -159,7 +89,7 @@ async function handleAnalyze(
 ): Promise<AnalyzeResponse> {
   const [resumes, settings] = await Promise.all([
     getItem<Resume[]>(STORAGE_KEYS.resumes, []),
-    getItem<ProviderSettings>(STORAGE_KEYS.providerSettings, DEFAULT_SETTINGS),
+    loadSettings(),
   ]);
 
   const resume = resumes.find((r) => r.id === resumeId);
@@ -169,7 +99,7 @@ async function handleAnalyze(
   let analysis;
   let modelUsed = settings.model;
   try {
-    const result = await withGeminiFallback(
+    const result = await withModelFallback(
       settings,
       (s) => getAiClient(s).generateMatchAnalysis(resume.parsedText, job),
       (info) => sendProgress(tabId, describeAttempt(info))
@@ -216,7 +146,7 @@ async function handleGenerateInterviewQuestions(
 
   const [resumes, settings] = await Promise.all([
     getItem<Resume[]>(STORAGE_KEYS.resumes, []),
-    getItem<ProviderSettings>(STORAGE_KEYS.providerSettings, DEFAULT_SETTINGS),
+    loadSettings(),
   ]);
 
   const resume = resumes.find((r) => r.id === entry.resumeUsed.id);
@@ -230,7 +160,7 @@ async function handleGenerateInterviewQuestions(
 
   let interviewQuestions;
   try {
-    const { result } = await withGeminiFallback(settings, (s) =>
+    const { result } = await withModelFallback(settings, (s) =>
       getAiClient(s).generateInterviewQuestions(resume.parsedText, entry.job)
     );
     interviewQuestions = result;

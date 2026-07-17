@@ -2,12 +2,12 @@ import type { InterviewQA, JobPosting, MatchAnalysis } from "../types";
 import { buildInterviewQuestionsPrompt, buildMatchAnalysisPrompt } from "./prompt";
 import {
   extractJsonPayload,
-  interviewQuestionsSchema,
+  parseInterviewQuestions,
   parseMatchAnalysis,
 } from "./schema";
 import {
   assertOk,
-  fetchWithTimeout,
+  fetchTextWithTimeout,
   INTERVIEW_QUESTIONS_TEMPERATURE,
   MATCH_ANALYSIS_TEMPERATURE,
   type AiClient,
@@ -21,7 +21,7 @@ async function callAnthropic(
   prompt: string,
   temperature: number
 ): Promise<string> {
-  const response = await fetchWithTimeout(URL_, {
+  const { response, body } = await fetchTextWithTimeout(URL_, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -40,7 +40,6 @@ async function callAnthropic(
     }),
   });
 
-  const body = await response.text();
   assertOk(response, body, "Anthropic");
 
   const data = JSON.parse(body);
@@ -60,7 +59,7 @@ export function createAnthropicClient(apiKey: string, model: string): AiClient {
     async generateInterviewQuestions(resumeText: string, job: JobPosting): Promise<InterviewQA[]> {
       const prompt = buildInterviewQuestionsPrompt(resumeText, job);
       const text = await callAnthropic(apiKey, model, prompt, INTERVIEW_QUESTIONS_TEMPERATURE);
-      return interviewQuestionsSchema.parse(extractJsonPayload(text));
+      return parseInterviewQuestions(extractJsonPayload(text));
     },
   };
 }

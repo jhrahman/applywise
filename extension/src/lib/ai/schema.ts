@@ -1,5 +1,6 @@
 import { z } from "zod";
-import type { MatchAnalysis } from "../types";
+import { AiResponseFormatError } from "./client";
+import type { InterviewQA, MatchAnalysis } from "../types";
 
 const salaryInfoSchema = z
   .object({
@@ -29,6 +30,19 @@ export const matchAnalysisSchema = z.object({
   jobDetails: jobDetailsSchema,
 });
 
+/**
+ * Models routinely echo an enum back with different casing or padding
+ * ("Found", "REQUIRED", " found ") — especially the ones with no structured
+ * output, which only have the prompt's word for the expected spelling. Every
+ * enum below pairs with `.catch()`, which turns an unrecognised value into a
+ * default *silently*, so without this the difference between "found" and
+ * "Found" is the difference between a 100 and a 25 with nothing logged.
+ * Normalise first; let `.catch()` handle only genuinely unusable values.
+ */
+function normalizeEnumToken(value: unknown): unknown {
+  return typeof value === "string" ? value.trim().toLowerCase() : value;
+}
+
 export const interviewQaSchema = z.object({
   question: z.string(),
   // Which side of the pair the question was built from — drives the 60/40
@@ -36,11 +50,35 @@ export const interviewQaSchema = z.object({
   // results UI. `.catch` rather than a hard requirement: a model that omits
   // or misspells this tag shouldn't cost the user all 20 questions, and "job"
   // is the safe default since it's the majority side of the split.
-  source: z.enum(["job", "resume"]).catch("job"),
+  source: z.preprocess(normalizeEnumToken, z.enum(["job", "resume"])).catch("job"),
   suggestedAnswer: z.string(),
 });
 
 export const interviewQuestionsSchema = z.array(interviewQaSchema).max(20);
+
+/** Zod's own message is a JSON blob; keep the first couple of issues readable. */
+function describeZodIssues(error: z.ZodError): string {
+  return error.issues
+    .slice(0, 3)
+    .map((i) => `${i.path.join(".") || "(root)"}: ${i.message}`)
+    .join("; ");
+}
+
+/**
+ * The interview-questions counterpart to parseMatchAnalysis — use this at every
+ * provider boundary rather than interviewQuestionsSchema.parse(), so a
+ * malformed response is a retryable AiResponseFormatError instead of a raw
+ * ZodError the fallback chain can't recognise.
+ */
+export function parseInterviewQuestions(raw: unknown): InterviewQA[] {
+  const parsed = interviewQuestionsSchema.safeParse(raw);
+  if (!parsed.success) {
+    throw new AiResponseFormatError(
+      `Couldn't parse the AI response: ${describeZodIssues(parsed.error)}`
+    );
+  }
+  return parsed.data;
+}
 
 // The JSON Schema shapes below are handed to providers that support
 // constrained/structured output (Gemini's responseSchema, OpenAI's
@@ -201,8 +239,10 @@ export const interviewQuestionsJsonSchema = {
 // self-reported score.
 const requirementEntrySchema = z.object({
   requirement: z.string(),
-  kind: z.enum(["required", "preferred"]).catch("required"),
-  status: z.enum(["found", "missing"]).catch("missing"),
+  // See normalizeEnumToken: these two feed computeMatchScore directly, so a
+  // casing mismatch here silently rewrites the headline number.
+  kind: z.preprocess(normalizeEnumToken, z.enum(["required", "preferred"])).catch("required"),
+  status: z.preprocess(normalizeEnumToken, z.enum(["found", "missing"])).catch("missing"),
 });
 
 const scratchpadSchema = z.object({
@@ -248,7 +288,15 @@ export function computeMatchScore(
  * score means the same thing no matter which model produced it.
  */
 export function parseMatchAnalysis(raw: unknown): MatchAnalysis {
-  const analysis = matchAnalysisSchema.parse(raw);
+  const parsed = matchAnalysisSchema.safeParse(raw);
+  if (!parsed.success) {
+    // JSON, but not the shape we asked for. Same reasoning as a parse failure:
+    // it's this model's quirk, so let the chain try another one.
+    throw new AiResponseFormatError(
+      `Couldn't parse the AI response: ${describeZodIssues(parsed.error)}`
+    );
+  }
+  const analysis = parsed.data;
   const scratchpad = scratchpadSchema.safeParse(raw);
 
   // No usable scratchpad (a model ignored the field, or returned it empty) —
@@ -264,10 +312,85 @@ export function parseMatchAnalysis(raw: unknown): MatchAnalysis {
   };
 }
 
-/** Models occasionally wrap JSON in markdown code fences even when asked not to. */
+/**
+ * Reads the JSON value out of a model's reply.
+ *
+ * Asking for JSON does not reliably get *only* JSON. Providers with structured
+ * output honour it, but the prompt-only ones (DeepSeek/GLM/xAI, and the
+ * OpenRouter free models that don't advertise `structured_outputs`) routinely
+ * top-and-tail the payload with prose — "Here is the analysis:", a trailing
+ * "Hope this helps!", a stray <think> block — even when told not to. Parsing
+ * the whole reply blindly fails on all of those.
+ *
+ * So: try the cheap paths first, then fall back to locating the payload.
+ */
 export function extractJsonPayload(raw: string): unknown {
-  const trimmed = raw.trim();
-  const fenced = trimmed.match(/```(?:json)?\s*([\s\S]*?)```/i);
-  const candidate = fenced ? fenced[1].trim() : trimmed;
-  return JSON.parse(candidate);
+  for (const candidate of jsonCandidates(raw)) {
+    try {
+      return JSON.parse(candidate);
+    } catch {
+      // Try the next candidate — a brace inside prose can start a run that
+      // isn't really JSON, and that's expected rather than exceptional.
+    }
+  }
+  throw new AiResponseFormatError(
+    `Couldn't parse the AI response: no JSON found in "${raw.trim().slice(0, 120)}…"`
+  );
+}
+
+/** Ordered best-guess payloads, cheapest and most likely first. */
+function* jsonCandidates(raw: string): Generator<string> {
+  // Reasoning models sometimes inline their scratchpad. Drop it before
+  // scanning, or braces *inside* the reasoning get picked up as the payload.
+  const text = raw.replace(/<think>[\s\S]*?<\/think>/gi, " ").trim();
+
+  // 1. The whole reply — the overwhelmingly common case.
+  yield text;
+
+  // 2. Fenced blocks, in order. A model that reasons in one fence and answers
+  //    in another means the first fence isn't necessarily the payload, so try
+  //    each rather than only the first match.
+  for (const match of text.matchAll(/```(?:json)?\s*([\s\S]*?)```/gi)) {
+    yield match[1].trim();
+  }
+
+  // 3. Anything that looks like the start of a JSON value, scanned to its own
+  //    balanced end. Covers prose on either side, with or without fences.
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
+    if (ch === "{" || ch === "[") {
+      const balanced = scanBalanced(text, i);
+      if (balanced) yield balanced;
+    }
+  }
+}
+
+/**
+ * Returns the substring from `start` to the matching close bracket, or null if
+ * it never balances.
+ *
+ * Tracks string literals and escapes rather than just counting brackets: a
+ * resume quoted inside the JSON can easily contain a `}` (or a `\"`), and a
+ * naive count would cut the payload short at that character.
+ */
+function scanBalanced(text: string, start: number): string | null {
+  const open = text[start];
+  const close = open === "{" ? "}" : "]";
+  let depth = 0;
+  let inString = false;
+  let escaped = false;
+
+  for (let i = start; i < text.length; i++) {
+    const ch = text[i];
+    if (inString) {
+      if (escaped) escaped = false;
+      else if (ch === "\\") escaped = true;
+      else if (ch === '"') inString = false;
+      continue;
+    }
+    if (ch === '"') inString = true;
+    else if (ch === open) depth++;
+    else if (ch === close && --depth === 0) return text.slice(start, i + 1);
+  }
+  return null;
 }

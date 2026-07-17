@@ -56,6 +56,12 @@ Applywise defaults to Google's Gemini API, which has a free tier.
 2. Click **"Create API key"**
 3. Copy the key — you'll paste it into Applywise in the next step
 
+Prefer a wider choice of free models? [OpenRouter](https://openrouter.ai/keys)
+is the other free-tier option: one key reaches several free models (Nemotron 3,
+Tencent HY3, Gemma 4, GPT-OSS), though they're noticeably slower than Gemini's
+and share a daily cap. Pick **OpenRouter** as the provider in the next step
+instead.
+
 ### 4. Set up your resume and API key
 
 Back on [applywise-copilot.vercel.app](https://applywise-copilot.vercel.app/)
@@ -92,18 +98,28 @@ That's it. You're done with setup.
 - **Session history**: past analyses stay listed in the sidebar of the
   results page — local to this browser only. Remove one entry at a time or
   clear the whole list with a confirm step.
-- **Switching AI providers**: on the Setup page, pick from Gemini, DeepSeek,
-  GLM, OpenAI, Anthropic, or Grok (xAI) — free-tier/trial options are listed
-  first. Each has its own API key and model list; a "Custom model ID" field
-  is always available if a provider retires a model.
-- **Automatic model fallback (Gemini)**: if your selected Gemini model times
-  out or is hit with a rate limit / high-demand error, Applywise automatically
-  retries with another free Gemini model instead of failing the analysis —
-  and updates your saved Setup page model to whichever one actually worked.
-  You'll see this happen live: the floating "Analyze" button updates in
-  real time ("gemini-3-flash-preview was busy — retrying with
-  gemini-flash-latest…") instead of just sitting on "Analyzing…" the whole
-  time.
+- **Switching AI providers**: on the Setup page, pick from Gemini, OpenRouter,
+  DeepSeek, GLM, OpenAI, Anthropic, or Grok (xAI) — free-tier/trial options are
+  listed first. Each has its own API key and model list; a "Custom model ID"
+  field is always available if a provider retires a model.
+- **Auto-fallback to other free models**: a single toggle in the **AI provider**
+  card. When it's on and your selected model times out or hits a rate limit /
+  high-demand error, Applywise works down the free models — strongest first,
+  fastest last — until one answers, instead of failing the analysis. Turn it
+  off to analyze with only the model you picked, which is what you want when
+  comparing models: a silent hand-off would credit another model's output to
+  the one you selected. Your saved model is never changed either way; the
+  results page shows which model actually answered.
+
+  It applies to **Gemini** and **OpenRouter**, the two providers with free
+  models to fall back to, and stays inert for the others. You'll see it happen
+  live: the floating "Analyze" button updates in real time
+  ("gemini-3-flash-preview was busy — retrying with gemini-flash-latest…")
+  instead of sitting on "Analyzing…" the whole time.
+
+  Note that OpenRouter's free models are much slower than Gemini's (measured:
+  ~12s to ~200s per analysis, depending on the model and how loaded its host
+  is), so expect to wait.
 - **Extension update checks**: "Load unpacked" installs can't auto-update
   (only Chrome Web Store/Firefox Add-ons installs can), so the extension
   popup checks the latest deployed version on every open and shows a banner
@@ -186,14 +202,17 @@ tested as part of this project — treat it as a starting point.
   live exchange rates, shown alongside the original figure with the correct
   per-year/per-month/per-hour period; skipped entirely when a salary has no
   actual numbers (e.g. "Negotiable").
-- **Multi-provider AI support** — Gemini, DeepSeek, GLM (Zhipu/Z.ai), OpenAI,
-  Anthropic, and Grok (xAI), with free-tier/trial-credit options listed first
-  and a custom-model-ID field as an escape hatch
-- **Automatic Gemini fallback with live progress** — timeouts, rate limits,
-  and high-demand errors trigger a retry against another free Gemini model
-  (shown in real time on the floating "Analyze" button), and the model that
-  actually succeeded is shown on the results page and saved back to your
-  settings
+- **Multi-provider AI support** — Gemini, OpenRouter, DeepSeek, GLM
+  (Zhipu/Z.ai), OpenAI, Anthropic, and Grok (xAI), with free-tier/trial-credit
+  options listed first and a custom-model-ID field as an escape hatch
+- **Auto-fallback across free models, with live progress** — one toggle in the
+  AI provider card; when on, timeouts, rate limits, high-demand errors, and
+  responses that come back unusable all move the analysis to the next free
+  Gemini/OpenRouter model (strongest first, shown in real time on the floating
+  "Analyze" button) rather than failing it. Errors another model can't fix — a
+  bad API key, say — still surface immediately instead of burning the chain. The
+  model that actually answered is shown on the results page. Turn it off to pin
+  an analysis to exactly one model
 - **Interview prep** — up to 20 likely interview questions with suggested
   answers, generated on demand and cached so revisiting the page doesn't
   re-spend an API call
@@ -369,10 +388,14 @@ browser, never on the server.
 - **"Extension context invalidated" / blank error after clicking Analyze**:
   you reloaded the extension while a job tab was already open. Refresh that
   tab.
-- **429 rate limit error**: your AI provider's free-tier quota was hit. For
-  Gemini this now auto-retries with another free model first — if you still
-  see this, all of them are exhausted; wait a bit or try a different
-  provider. For other providers, try a lighter model on the Setup page.
+- **429 rate limit error**: your AI provider's free-tier quota was hit. With
+  auto-fallback on, Gemini and OpenRouter try their other free models first —
+  if you still see this, all of them are limited; wait a bit or try a different
+  provider. On OpenRouter specifically, a 429 on one model usually just means
+  that model's upstream host is busy (fallback routes around it), whereas every
+  free model failing at once points at the shared daily cap on free models —
+  check https://openrouter.ai/activity. For other providers, try a lighter
+  model on the Setup page.
 - **404 "model no longer available"**: providers retire model IDs over time.
   On the Setup page, switch **Model** to **"Custom model ID…"** and paste a
   currently-valid ID from your provider's docs/dashboard.
