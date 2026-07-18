@@ -115,7 +115,9 @@ That's it. You're done with setup.
   Cerebras, OpenRouter, Mistral, Cohere, DeepSeek, GLM, OpenAI, Anthropic, or
   Grok (xAI) — free-tier/trial options are listed first. Each has its own API key
   and model list; you can add **multiple custom model IDs per provider** (not
-  just one) for anything not in the preset list. Each provider remembers its own
+  just one) for anything not in the preset list. The API key field links
+  straight to that provider's official key-creation page, so you're never
+  stuck guessing where to go. Each provider remembers its own
   API key — switch providers and back, and the key you already saved for it is
   still there, no re-entering
   required. (Note: **Groq** at groq.com is a different provider from **Grok
@@ -245,9 +247,10 @@ tested as part of this project — treat it as a starting point.
   actual numbers (e.g. "Negotiable").
 - **Multi-provider AI support** — Gemini, Groq, Cerebras, OpenRouter, Mistral,
   Cohere, DeepSeek, GLM (Zhipu/Z.ai), OpenAI, Anthropic, and Grok (xAI), with
-  free-tier/trial-credit options listed first and multiple custom-model-ID slots
-  per provider as an escape hatch. (Groq at groq.com is a distinct provider from
-  Grok/xAI — the former is free, the latter paid.)
+  free-tier/trial-credit options listed first, multiple custom-model-ID slots
+  per provider as an escape hatch, and a direct link to each provider's own
+  key-creation page next to the API key field. (Groq at groq.com is a distinct
+  provider from Grok/xAI — the former is free, the latter paid.)
 - **Real-time model availability check** — the Setup page validates each preset
   and custom model against the provider's live `/models` catalogue (fetched via
   the extension with your saved key, cached ~1 hour) and flags retired ones in
