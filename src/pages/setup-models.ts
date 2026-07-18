@@ -127,6 +127,23 @@ export const MODELS: Record<AiProvider, { label: string; value: string }[]> = {
   ],
 };
 
+// Where to create/view an API key for each provider — shown as a hyperlink
+// next to the API key field on Setup so a user isn't stuck guessing where to
+// go. Official dashboard/key-management pages only.
+export const PROVIDER_KEY_URLS: Record<AiProvider, string> = {
+  gemini: "https://aistudio.google.com/api-keys",
+  groq: "https://console.groq.com/keys",
+  cerebras: "https://cloud.cerebras.ai",
+  openrouter: "https://openrouter.ai/keys",
+  mistral: "https://console.mistral.ai/api-keys",
+  cohere: "https://dashboard.cohere.com/api-keys",
+  deepseek: "https://platform.deepseek.com/api_keys",
+  glm: "https://z.ai/manage-apikey/apikey-list",
+  openai: "https://platform.openai.com/api-keys",
+  anthropic: "https://console.anthropic.com/settings/keys",
+  xai: "https://console.x.ai",
+};
+
 /** The provider's short display name (the part before "— free tier" etc.). */
 export function providerDisplayName(provider: AiProvider): string {
   return PROVIDER_OPTIONS.find((o) => o.value === provider)?.label.split(" — ")[0] ?? provider;

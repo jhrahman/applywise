@@ -15,6 +15,7 @@ import {
   AlertTriangle,
   ShieldCheck,
   Sparkles,
+  ExternalLink,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -30,7 +31,13 @@ import { useExtensionVersion } from "@/hooks/useExtensionVersion";
 import { useModelCatalog, isModelLive } from "@/hooks/useModelCatalog";
 import { useChangelog } from "@/hooks/useChangelog";
 import { compareVersions } from "@/lib/version";
-import { FALLBACK_PROVIDERS, MODELS, PROVIDER_OPTIONS, providerDisplayName } from "./setup-models";
+import {
+  FALLBACK_PROVIDERS,
+  MODELS,
+  PROVIDER_KEY_URLS,
+  PROVIDER_OPTIONS,
+  providerDisplayName,
+} from "./setup-models";
 import { getProviderApiKey, normalizeSettings } from "@/types";
 import type { AiProvider, ProviderSettings, Resume } from "@/types";
 
@@ -286,7 +293,18 @@ export function Setup() {
           />
 
           <div className="flex flex-col gap-1.5">
-            <Label>API key</Label>
+            <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
+              <Label>API key</Label>
+              <a
+                href={PROVIDER_KEY_URLS[settings.provider]}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-1 text-xs font-medium text-accent-1 hover:underline"
+              >
+                Get a {providerDisplayName(settings.provider)} API key
+                <ExternalLink size={11} className="shrink-0" />
+              </a>
+            </div>
             <Input
               type="password"
               placeholder="Paste your API key"
