@@ -1,6 +1,15 @@
 {
   "entries": [
     {
+      "version": "0.20.0",
+      "changes": [
+        "Hugging Face added as a new AI provider (GPT-OSS 120B, GLM-5.2, and four Qwen3 models), with its own \"Get an API key\" link and real-time model availability check",
+        "Fixed AI providers occasionally inventing ATS notes about skills/technologies that aren't actually in your resume",
+        "More consistent, richer ATS notes and suggestions from fast/lite models (Cohere especially), and a crash fixed where an unlisted salary could drop an entire analysis",
+        "Redesigned the Provider and Model dropdowns on the Setup page with proper hover/selected states, keyboard navigation, and smoother animation"
+      ]
+    },
+    {
       "version": "0.19.0",
       "changes": [
         "4 new free-tier AI providers added: Groq, Cerebras, Mistral, and Cohere",

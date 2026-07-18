@@ -17,7 +17,8 @@ export type AiProvider =
   | "anthropic"
   | "deepseek"
   | "glm"
-  | "xai";
+  | "xai"
+  | "huggingface";
 
 export interface ProviderSettings {
   provider: AiProvider;

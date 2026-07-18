@@ -72,6 +72,10 @@ step instead of Gemini:
   slower than Gemini's and share a daily cap.
 - **[Cohere](https://dashboard.cohere.com/api-keys)** — a free Trial key
   (1,000 calls/month, non-commercial).
+- **[Hugging Face](https://huggingface.co/settings/tokens)** — routed through
+  Hugging Face's Inference Providers (GPT-OSS 120B, GLM-5.2, Qwen3 8B/14B/32B,
+  Qwen3-4B-Instruct-2507). Free accounts get $0.10/month of credit — a small
+  trial allowance, not an ongoing free tier like Gemini's.
 
 ### 4. Set up your resume and API key
 
@@ -112,8 +116,8 @@ That's it. You're done with setup.
   results page — local to this browser only. Remove one entry at a time or
   clear the whole list with a confirm step.
 - **Switching AI providers**: on the Setup page, pick from Gemini, Groq,
-  Cerebras, OpenRouter, Mistral, Cohere, DeepSeek, GLM, OpenAI, Anthropic, or
-  Grok (xAI) — free-tier/trial options are listed first. Each has its own API key
+  Cerebras, OpenRouter, Mistral, Cohere, Hugging Face, DeepSeek, GLM, OpenAI,
+  Anthropic, or Grok (xAI) — free-tier/trial options are listed first. Each has its own API key
   and model list; you can add **multiple custom model IDs per provider** (not
   just one) for anything not in the preset list. The API key field links
   straight to that provider's official key-creation page, so you're never
@@ -139,9 +143,10 @@ That's it. You're done with setup.
   the one you selected. Your saved model is never changed either way; the
   results page shows which model actually answered.
 
-  It applies to the free-tier providers with several free models to fall back
-  to — **Gemini**, **Groq**, **Cerebras**, **OpenRouter**, **Mistral**, and
-  **Cohere** — and stays inert for the paid/single-key ones. You'll see it happen
+  It applies to the free-tier/trial-credit providers with several models to
+  fall back to — **Gemini**, **Groq**, **Cerebras**, **OpenRouter**,
+  **Mistral**, **Cohere**, and **Hugging Face** — and stays inert for the
+  paid/single-key ones. You'll see it happen
   live: the floating "Analyze" button updates in real time
   ("gemini-3-flash-preview was busy — retrying with gemini-flash-latest…")
   instead of sitting on "Analyzing…" the whole time.
@@ -213,7 +218,12 @@ tested as part of this project — treat it as a starting point.
   same resume against the same posting lands close to the same score instead
   of swinging wildly between runs. ATS notes and suggestions are justified
   and highlight the specific skills/keywords they're about, instead of
-  reading as an undifferentiated block of text.
+  reading as an undifferentiated block of text. The prompt explicitly forbids
+  naming any skill or technology that isn't actually present in your resume
+  or the posting, so fast/lite models can't invent a finding (e.g. claiming
+  a term appears in your resume when it doesn't) — a real defect a small
+  model can otherwise fall into by copying an illustrative example instead of
+  reasoning about your actual documents.
 - **Robust job posting extraction, no scrolling or clicking required** — the
   title, company, location, and full description are read from the page with
   several safeguards: before reading, the extension hydrates any lazily-
@@ -246,11 +256,13 @@ tested as part of this project — treat it as a starting point.
   per-year/per-month/per-hour period; skipped entirely when a salary has no
   actual numbers (e.g. "Negotiable").
 - **Multi-provider AI support** — Gemini, Groq, Cerebras, OpenRouter, Mistral,
-  Cohere, DeepSeek, GLM (Zhipu/Z.ai), OpenAI, Anthropic, and Grok (xAI), with
-  free-tier/trial-credit options listed first, multiple custom-model-ID slots
-  per provider as an escape hatch, and a direct link to each provider's own
-  key-creation page next to the API key field. (Groq at groq.com is a distinct
-  provider from Grok/xAI — the former is free, the latter paid.)
+  Cohere, Hugging Face, DeepSeek, GLM (Zhipu/Z.ai), OpenAI, Anthropic, and Grok
+  (xAI), with free-tier/trial-credit options listed first, multiple
+  custom-model-ID slots per provider as an escape hatch, and a direct link to
+  each provider's own key-creation page next to the API key field. (Groq at
+  groq.com is a distinct provider from Grok/xAI — the former is free, the
+  latter paid. Hugging Face's free credit is a small $0.10/month trial
+  allowance, not an ongoing free tier.)
 - **Real-time model availability check** — the Setup page validates each preset
   and custom model against the provider's live `/models` catalogue (fetched via
   the extension with your saved key, cached ~1 hour) and flags retired ones in
@@ -258,11 +270,11 @@ tested as part of this project — treat it as a starting point.
   it 404s an analysis
 - **Auto-fallback across free models, with live progress** — one toggle in the
   AI provider card; when on, timeouts, rate limits, high-demand errors, and
-  responses that come back unusable all move the analysis to the next free model
+  responses that come back unusable all move the analysis to the next model
   in the same provider (strongest first, shown in real time on the floating
-  "Analyze" button) rather than failing it. Works for the free-tier providers
-  with several free models to fall back to (Gemini, Groq, Cerebras, OpenRouter,
-  Mistral, Cohere). Errors another model can't fix — a bad API key, say — still
+  "Analyze" button) rather than failing it. Works for the providers with
+  several models to fall back to (Gemini, Groq, Cerebras, OpenRouter,
+  Mistral, Cohere, Hugging Face). Errors another model can't fix — a bad API key, say — still
   surface immediately instead of burning the chain. The model that actually
   answered is shown on the results page. Turn it off to pin an analysis to
   exactly one model
@@ -442,8 +454,8 @@ browser, never on the server.
   you reloaded the extension while a job tab was already open. Refresh that
   tab.
 - **429 rate limit error**: your AI provider's free-tier quota was hit. With
-  auto-fallback on, the free-tier providers (Gemini, Groq, Cerebras, OpenRouter,
-  Mistral, Cohere) try their other free models first — if you still see this,
+  auto-fallback on, the providers with several models (Gemini, Groq, Cerebras,
+  OpenRouter, Mistral, Cohere, Hugging Face) try their other models first — if you still see this,
   all of them are limited; wait a bit or try a different provider. Some free
   tiers (Cerebras, Cohere) cap requests per minute *account-wide*, so switching
   models won't help there — wait for the window to reset. On OpenRouter

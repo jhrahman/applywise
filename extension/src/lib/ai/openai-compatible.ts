@@ -6,6 +6,7 @@ import {
   parseInterviewQuestions,
   parseMatchAnalysis,
   matchAnalysisThoroughJsonSchema,
+  toStandardJsonSchema,
 } from "./schema";
 import {
   assertOk,
@@ -34,6 +35,15 @@ export function createOpenAiCompatibleClient(options: {
   model: string;
   providerName: string;
   useJsonSchema?: boolean;
+  /**
+   * Which JSON Schema flavour to send with `response_format`. "openapi"
+   * (default) sends the schemas as authored — with OpenAPI's `nullable: true`
+   * — which OpenAI and OpenRouter accept. "standard" runs them through
+   * toStandardJsonSchema first, for providers (Cohere) whose validator rejects
+   * `nullable` and demands standard JSON Schema union types. Ignored unless
+   * useJsonSchema is on.
+   */
+  jsonSchemaDialect?: "openapi" | "standard";
   /** Adds the anti-skim emphasis to the match prompt — for lite/fast models. */
   thoroughMatchPrompt?: boolean;
   /**
@@ -64,6 +74,7 @@ export function createOpenAiCompatibleClient(options: {
     model,
     providerName,
     useJsonSchema = false,
+    jsonSchemaDialect = "openapi",
     thoroughMatchPrompt = false,
     timeoutMs,
     maxTokens,
@@ -83,10 +94,21 @@ export function createOpenAiCompatibleClient(options: {
     };
     if (maxTokens != null) body.max_tokens = maxTokens;
     if (useJsonSchema) {
-      body.response_format = {
-        type: "json_schema",
-        json_schema: { name: schemaName, schema: jsonSchema, strict: false },
-      };
+      // Cohere's structured-output validator only accepts a top-level *object*
+      // schema (verified live: a top-level array 400s with "'type' field must
+      // be 'object'"). The interview-questions schema is a top-level array —
+      // and it never needed structured output anyway, since the score-drift
+      // problem that motivated it is specific to match analysis. So for the
+      // standard dialect, skip response_format on an array schema and let that
+      // call fall back to prompt-only, exactly as it worked before.
+      const isTopLevelArray = (jsonSchema as { type?: unknown })?.type === "array";
+      if (!(jsonSchemaDialect === "standard" && isTopLevelArray)) {
+        const schema = jsonSchemaDialect === "standard" ? toStandardJsonSchema(jsonSchema) : jsonSchema;
+        body.response_format = {
+          type: "json_schema",
+          json_schema: { name: schemaName, schema, strict: false },
+        };
+      }
     }
 
     const { response, body: responseBody } = await fetchTextWithTimeout(

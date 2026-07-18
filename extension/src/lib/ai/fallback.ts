@@ -86,6 +86,20 @@ export const FALLBACK_MODELS: Partial<Record<AiProvider, ModelTiers>> = {
     preferred: ["command-a-03-2025", "command-r-plus-08-2024"],
     lite: ["command-r-08-2024", "command-r7b-12-2024"],
   },
+  // Hugging Face's Inference Providers router. Unlike the other entries here,
+  // this isn't a generous ongoing free tier — a free HF account gets $0.10 of
+  // routed-request credit per month (see setup-models.ts), and every model is
+  // billed per-token, none is actually free. Included anyway per product
+  // decision: a busy/rate-limited hop is still worth more than a failed
+  // analysis, and every model here is inexpensive enough per request
+  // (verified live pricing) that hopping across them won't drain the credit
+  // in one analysis. Qwen3-4B-Instruct-2507 is the lite tier, same role as
+  // Gemini's flash-lite: small, fast, non-thinking, and the cheapest of the
+  // set.
+  huggingface: {
+    preferred: ["openai/gpt-oss-120b", "zai-org/GLM-5.2", "Qwen/Qwen3-32B", "Qwen/Qwen3-14B", "Qwen/Qwen3-8B"],
+    lite: ["Qwen/Qwen3-4B-Instruct-2507"],
+  },
 };
 
 /** Whether this provider has a free-tier model chain worth falling back across. */

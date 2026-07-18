@@ -2,6 +2,16 @@ import { z } from "zod";
 import { AiResponseFormatError } from "./client";
 import type { InterviewQA, MatchAnalysis } from "../types";
 
+// `.catch(null)` on the whole object, same resilience philosophy as
+// experienceRequired/benefits below: weaker models routinely emit a salary
+// object with `raw: null` for a "Negotiable"/unspecified salary (verified live
+// — Cohere's command-r7b does this deterministically). Without the catch, that
+// single null fails `raw: z.string()` and throws an AiResponseFormatError that
+// discards the ENTIRE analysis (all the notes, skills, and score with it) and
+// burns a fallback attempt — a wildly disproportionate cost for one absent
+// field. Degrading a malformed salary to null (no salary shown) instead keeps
+// everything else the model got right. Well-formed salaries (raw is a real
+// string) are unaffected.
 const salaryInfoSchema = z
   .object({
     raw: z.string(),
@@ -10,7 +20,8 @@ const salaryInfoSchema = z
     currency: z.string().nullable(),
     period: z.string().nullable(),
   })
-  .nullable();
+  .nullable()
+  .catch(null);
 
 const jobDetailsSchema = z.object({
   company: z.string().nullable(),
@@ -230,6 +241,35 @@ export const matchAnalysisThoroughJsonSchema = {
     ...matchAnalysisJsonSchema.required,
   ],
 } as const;
+
+// Some providers' structured-output validators reject OpenAPI's `nullable: true`
+// keyword and demand standard JSON Schema, where nullability is expressed as a
+// union type. Cohere is the case that forced this (verified live: it 400s on
+// `nullable`, then on `type: ["object","null"]`, and only accepts a primitive
+// union `["string","null"]` plus an `anyOf` for a nullable object). Convert on
+// demand rather than hand-maintaining a second copy of every schema that could
+// drift out of sync with the OpenAPI one above.
+//
+// - primitive `{ type: "string", nullable: true }`  → `{ type: ["string","null"] }`
+// - object    `{ type: "object", nullable: true, … }` → `{ anyOf: [ {…}, { type: "null" } ] }`
+// - the `nullable` key is dropped everywhere else.
+export function toStandardJsonSchema(node: unknown): unknown {
+  if (Array.isArray(node)) return node.map(toStandardJsonSchema);
+  if (node && typeof node === "object") {
+    const src = node as Record<string, unknown>;
+    const out: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(src)) {
+      if (k === "nullable") continue;
+      out[k] = toStandardJsonSchema(v);
+    }
+    if (src.nullable === true) {
+      if (src.type === "object") return { anyOf: [out, { type: "null" }] };
+      if (typeof src.type === "string") out.type = [src.type, "null"];
+    }
+    return out;
+  }
+  return node;
+}
 
 // Gemini-only variant: adds propertyOrdering, a Gemini-specific Schema field
 // that guarantees generation order (belt-and-suspenders over declaration

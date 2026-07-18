@@ -53,6 +53,10 @@ const ENDPOINTS: Record<AiProvider, ModelsEndpoint> = {
   glm: openAiShape("https://api.z.ai/api/paas/v4/models"),
   openai: openAiShape("https://api.openai.com/v1/models"),
   xai: openAiShape("https://api.x.ai/v1/models"),
+  // The router's own /v1/models lists every model live on at least one
+  // Inference Providers host right now (id-only match is enough here — the
+  // provider/pricing detail per model isn't needed for the retired-check).
+  huggingface: openAiShape("https://router.huggingface.co/v1/models"),
   anthropic: {
     url: "https://api.anthropic.com/v1/models",
     headers: (k) => ({

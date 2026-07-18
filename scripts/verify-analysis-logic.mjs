@@ -97,6 +97,38 @@ check(
   });
   check(Array.isArray(parsed.jobDetails.benefits) && parsed.jobDetails.benefits.length === 0, "wrong-typed benefits degrades to [] instead of throwing");
 }
+{
+  // A "Negotiable"/unspecified salary that a weaker model returns as an object
+  // with raw:null (verified live: Cohere's command-r7b does this every time)
+  // must NOT crash the whole analysis. Before salaryInfoSchema got .catch(null)
+  // this threw an AiResponseFormatError and discarded every other field the
+  // model got right. It must degrade to salary:null instead.
+  const parsed = parseMatchAnalysis({
+    ...shell,
+    jobDetails: {
+      ...shell.jobDetails,
+      salary: { raw: null, minAmount: null, maxAmount: null, currency: null, period: null },
+    },
+    requirementAnalysis: reqs("required", "found"),
+    experienceFit: 1,
+  });
+  check(parsed.jobDetails.salary === null, "salary object with raw:null degrades to null instead of throwing away the whole analysis");
+  check(parsed.matchScore === 100, "…and the rest of the analysis (score, skills, notes) survives intact");
+}
+{
+  // A well-formed salary must still pass through untouched — the catch only
+  // rescues malformed ones.
+  const parsed = parseMatchAnalysis({
+    ...shell,
+    jobDetails: {
+      ...shell.jobDetails,
+      salary: { raw: "$90k-$110k / year", minAmount: 90000, maxAmount: 110000, currency: "USD", period: "year" },
+    },
+    requirementAnalysis: reqs("required", "found"),
+    experienceFit: 1,
+  });
+  check(parsed.jobDetails.salary?.raw === "$90k-$110k / year", "a well-formed salary still passes through unchanged");
+}
 
 // --- casing/padding must not change the score ------------------------------
 // A model writing "Found" instead of "found" used to hit `.catch("missing")`,

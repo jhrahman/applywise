@@ -14,6 +14,7 @@ export const FALLBACK_PROVIDERS: AiProvider[] = [
   "cerebras",
   "mistral",
   "cohere",
+  "huggingface",
 ];
 
 // Model IDs below are verified against each provider's own docs (see chat
@@ -106,6 +107,33 @@ export const MODELS: Record<AiProvider, { label: string; value: string }[]> = {
     { label: "GLM-5.2 — flagship, coding/agentic", value: "glm-5.2" },
     { label: "GLM-4.6 — previous generation", value: "glm-4.6" },
   ],
+  // Hugging Face Inference Providers — routed through router.huggingface.co,
+  // billed against a free account's $0.10/month credit (verified against
+  // huggingface.co/docs/inference-providers/pricing — this is a small trial
+  // allowance, not an ongoing free tier like Gemini/Groq/Cerebras). None of
+  // these models are actually free — every one is billed per-token once
+  // routed (verified live: every model in the router's /v1/models catalog
+  // reports is_free: false) — this is just the cheapest/fastest subset. IDs
+  // verified live against https://huggingface.co/api/models/{id} plus
+  // inferenceProviderMapping (confirms at least one provider actually serves
+  // the model right now — several other model names floated for this list
+  // turned out to be unservable and were dropped). Qwen3-235B-A22B was
+  // dropped too: at ~$0.0006/request it's the priciest per-token of the
+  // bunch after GLM-5.2, and a single request can burn a meaningful chunk of
+  // the $0.10 monthly credit. Qwen3-4B-Instruct-2507 is the closest analogue
+  // to Gemini's flash-lite: small, fast, non-thinking, and by far the
+  // cheapest here (~$0.00004/request).
+  huggingface: [
+    { label: "GPT-OSS 120B — strong reasoning, recommended", value: "openai/gpt-oss-120b" },
+    { label: "GLM-5.2 — flagship, coding/agentic (priciest per request)", value: "zai-org/GLM-5.2" },
+    { label: "Qwen3 32B — strong general purpose", value: "Qwen/Qwen3-32B" },
+    { label: "Qwen3 14B — balanced", value: "Qwen/Qwen3-14B" },
+    { label: "Qwen3 8B — fast", value: "Qwen/Qwen3-8B" },
+    {
+      label: "Qwen3 4B Instruct 2507 — fastest and cheapest, but shallower skill matching",
+      value: "Qwen/Qwen3-4B-Instruct-2507",
+    },
+  ],
   // Paid API key required, no free tier.
   openai: [
     { label: "GPT-5.6 Luna — cost-sensitive", value: "gpt-5.6-luna" },
@@ -142,6 +170,11 @@ export const PROVIDER_KEY_URLS: Record<AiProvider, string> = {
   openai: "https://platform.openai.com/api-keys",
   anthropic: "https://console.anthropic.com/settings/keys",
   xai: "https://console.x.ai",
+  // Pre-fills the fine-grained token form with the "Make calls to Inference
+  // Providers" permission already checked — a plain read token can't call the
+  // router at all (verified live: it 403s with a clear "does not have
+  // sufficient permissions" message), so this saves that dead end.
+  huggingface: "https://huggingface.co/settings/tokens/new?ownUserPermissions=inference.serverless.write&tokenType=fineGrained",
 };
 
 /** The provider's short display name (the part before "— free tier" etc.). */
@@ -159,6 +192,7 @@ export const PROVIDER_OPTIONS: { value: AiProvider; label: string }[] = [
   { value: "cohere", label: "Cohere — free trial (1k calls/mo)" },
   { value: "deepseek", label: "DeepSeek — free trial credits" },
   { value: "glm", label: "GLM (Zhipu / Z.ai) — free trial credits" },
+  { value: "huggingface", label: "Hugging Face — free trial credits ($0.10/mo)" },
   { value: "openai", label: "OpenAI — paid" },
   { value: "anthropic", label: "Anthropic — paid" },
   { value: "xai", label: "Grok (xAI) — paid" },

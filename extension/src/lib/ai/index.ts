@@ -11,6 +11,7 @@ import { createAnthropicClient } from "./anthropic";
 import { createDeepSeekClient } from "./deepseek";
 import { createGlmClient } from "./glm";
 import { createXaiClient } from "./xai";
+import { createHuggingFaceClient } from "./huggingface";
 
 export type { AiClient } from "./client";
 export { AiRequestError } from "./client";
@@ -40,5 +41,7 @@ export function getAiClient(settings: ProviderSettings): AiClient {
       return createGlmClient(apiKey, settings.model);
     case "xai":
       return createXaiClient(apiKey, settings.model);
+    case "huggingface":
+      return createHuggingFaceClient(apiKey, settings.model);
   }
 }

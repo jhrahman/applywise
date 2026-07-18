@@ -131,6 +131,9 @@ const RATE_LIMIT_HINTS: Record<string, string> = {
   DeepSeek: "Check your usage and rate limits at https://platform.deepseek.com/usage.",
   GLM: "Check your usage and rate limits at https://z.ai/model-api.",
   Grok: "Check your usage and rate limits at https://console.x.ai.",
+  "Hugging Face":
+    "Free accounts get $0.10/month of Inference Providers credit — check usage at https://huggingface.co/settings/billing. " +
+    "Once it's spent, requests 402 until next month or until you buy credits; auto-fallback (Setup page) only helps with a busy host, not an exhausted balance.",
 };
 
 /**
