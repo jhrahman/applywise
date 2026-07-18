@@ -174,6 +174,42 @@ body {
   }
 }
 
+/* The "Download vX.X.X (.zip)" button on the update-available card
+   (UpdateAvailableCard in src/pages/Setup.tsx) — a diagonal light band that
+   sweeps from the button's bottom-left corner to its top-right corner, to
+   draw the eye to a real, one-time-actionable update without being a
+   distracting nonstop shimmer. The 3s cycle is mostly idle: the sweep itself
+   takes well under a second, then rests until the next pass. */
+@keyframes update-shine {
+  0%,
+  92% {
+    transform: translateX(0) rotate(20deg);
+    opacity: 0;
+  }
+  4% {
+    opacity: 1;
+  }
+  35% {
+    transform: translateX(420%) rotate(20deg);
+    opacity: 1;
+  }
+  45%,
+  100% {
+    transform: translateX(420%) rotate(20deg);
+    opacity: 0;
+  }
+}
+
+/* Decorative attention-getter, not a progress indicator — unlike the
+   spinners this project deliberately exempts from reduced motion, freezing
+   this one loses nothing the user needs to see. */
+@media (prefers-reduced-motion: reduce) {
+  .update-shine {
+    animation: none !important;
+    opacity: 0 !important;
+  }
+}
+
 /* The custom Select's popup (src/components/ui/select.tsx) — a short
    scale+fade so it reads as opening from the trigger rather than just
    appearing. */

@@ -758,7 +758,12 @@ function UpdateAvailableCard({
       <CardContent className="flex flex-col gap-4">
         <div>
           <a href="/applywise-extension.zip" download className="w-fit">
-            <Button>
+            <Button className="relative isolate overflow-hidden">
+              <span
+                aria-hidden="true"
+                className="update-shine pointer-events-none absolute -inset-y-1/2 left-[-40%] -z-10 w-[30%] bg-gradient-to-r from-transparent via-white/70 to-transparent"
+                style={{ animation: "update-shine 3s ease-in-out infinite" }}
+              />
               <Download size={16} />
               Download v{latestVersion} (.zip)
             </Button>
