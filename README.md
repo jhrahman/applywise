@@ -151,7 +151,10 @@ That's it. You're done with setup.
   (only Chrome Web Store/Firefox Add-ons installs can), so the extension
   popup checks the latest deployed version on every open and shows a banner
   — with a matching one on the Setup page — if yours is behind, so you're
-  never left guessing whether a re-download is needed after a push.
+  never left guessing whether a re-download is needed after a push. The
+  Setup page's banner also lists a short "What's new" changelog for every
+  version between yours and the latest, fetched fresh on every page load
+  (`public/changelog.json`) so it reflects a just-pushed release immediately.
 
 ---
 

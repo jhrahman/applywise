@@ -1,0 +1,47 @@
+{
+  "entries": [
+    {
+      "version": "0.19.0",
+      "changes": [
+        "4 new free-tier AI providers added: Groq, Cerebras, Mistral, and Cohere",
+        "Save multiple custom model IDs per provider, not just one",
+        "Setup page now checks model availability in real time and flags retired models",
+        "Setup page now shows a \"What's new\" changelog when an update is available",
+        "Smoother, more consistent layout on phones and tablets"
+      ]
+    },
+    {
+      "version": "0.16.0",
+      "changes": [
+        "Results page now shows the experience level a posting asks for",
+        "Job benefits and perks (insurance, bonuses, leave, etc.) are now extracted and shown",
+        "More reliable analysis from fast/lite AI models"
+      ]
+    },
+    {
+      "version": "0.15.0",
+      "changes": [
+        "More consistent match scores between re-analyzing the same resume and posting"
+      ]
+    },
+    {
+      "version": "0.14.0",
+      "changes": [
+        "More accurate job details when analyzing LinkedIn postings"
+      ]
+    },
+    {
+      "version": "0.13.0",
+      "changes": [
+        "Sharper, more specific ATS notes and analysis suggestions"
+      ]
+    },
+    {
+      "version": "0.12.0",
+      "changes": [
+        "Added OpenRouter as a free AI provider option",
+        "Faster analysis overall"
+      ]
+    }
+  ]
+}

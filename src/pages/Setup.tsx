@@ -14,6 +14,7 @@ import {
   X,
   AlertTriangle,
   ShieldCheck,
+  Sparkles,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -27,6 +28,8 @@ import { getItem, setItem, STORAGE_KEYS } from "@/lib/storage";
 import { cn } from "@/lib/utils";
 import { useExtensionVersion } from "@/hooks/useExtensionVersion";
 import { useModelCatalog, isModelLive } from "@/hooks/useModelCatalog";
+import { useChangelog } from "@/hooks/useChangelog";
+import { compareVersions } from "@/lib/version";
 import { FALLBACK_PROVIDERS, MODELS, PROVIDER_OPTIONS, providerDisplayName } from "./setup-models";
 import { getProviderApiKey, normalizeSettings } from "@/types";
 import type { AiProvider, ProviderSettings, Resume } from "@/types";
@@ -734,20 +737,93 @@ function UpdateAvailableCard({
           </div>
         </div>
       </CardHeader>
-      <CardContent>
-        <a href="/applywise-extension.zip" download className="w-fit">
-          <Button>
-            <Download size={16} />
-            Download v{latestVersion} (.zip)
-          </Button>
-        </a>
-        <p className="mt-3 text-xs text-[var(--fg-dim)]">
-          After unzipping, reload it at your browser's extensions page (
-          <code>chrome://extensions</code>) using the reload icon on the Applywise card, or
-          re-run "Load unpacked" pointing at the new folder.
-        </p>
+      <CardContent className="flex flex-col gap-4">
+        <div>
+          <a href="/applywise-extension.zip" download className="w-fit">
+            <Button>
+              <Download size={16} />
+              Download v{latestVersion} (.zip)
+            </Button>
+          </a>
+          <p className="mt-3 text-xs text-[var(--fg-dim)]">
+            After unzipping, reload it at your browser's extensions page (
+            <code>chrome://extensions</code>) using the reload icon on the Applywise card, or
+            re-run "Load unpacked" pointing at the new folder.
+          </p>
+        </div>
+        <Changelog installedVersion={installedVersion} latestVersion={latestVersion} />
       </CardContent>
     </Card>
+  );
+}
+
+// How many version groups to show before collapsing the rest into a count —
+// keeps someone many releases behind from scrolling a wall of history instead
+// of the handful of updates that actually matter to them right now.
+const CHANGELOG_VISIBLE_VERSIONS = 3;
+
+/**
+ * "What's new since your installed version" — fetched fresh on every page
+ * load (see useChangelog) rather than baked into the JS bundle, so pushing a
+ * new entry to public/changelog.json shows up immediately on next visit, no
+ * extension update or app redeploy wait required on the reader's end.
+ */
+function Changelog({
+  installedVersion,
+  latestVersion,
+}: {
+  installedVersion: string;
+  latestVersion: string;
+}) {
+  const { entries } = useChangelog();
+
+  if (entries === null) return null; // still loading, or the file wasn't reachable — stay quiet
+
+  const newSinceInstall = entries
+    .filter((e) => compareVersions(e.version, installedVersion) > 0)
+    .sort((a, b) => compareVersions(b.version, a.version));
+
+  if (newSinceInstall.length === 0) return null;
+
+  const visible = newSinceInstall.slice(0, CHANGELOG_VISIBLE_VERSIONS);
+  const hiddenCount = newSinceInstall.length - visible.length;
+
+  return (
+    <div className="rounded-lg border border-[var(--border)] bg-[var(--bg-2)] p-3.5">
+      <div className="mb-2.5 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-[var(--fg-dim)]">
+        <Sparkles size={13} className="shrink-0 text-accent-1" />
+        What's new
+      </div>
+      <div className="flex flex-col gap-3">
+        {visible.map((entry) => (
+          <div key={entry.version}>
+            <span
+              className={cn(
+                "mb-1.5 inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-bold tabular-nums",
+                entry.version === latestVersion
+                  ? "bg-accent-1/15 text-accent-1"
+                  : "border border-[var(--border)] text-[var(--fg-dim)]"
+              )}
+            >
+              v{entry.version}
+            </span>
+            <ul className="flex flex-col gap-1">
+              {entry.changes.map((change, i) => (
+                <li key={i} className="flex gap-2 text-sm leading-snug text-[var(--fg)]">
+                  <span className="mt-1.5 h-1 w-1 shrink-0 rounded-full bg-accent-1" />
+                  <span className="min-w-0 flex-1">{change}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        ))}
+      </div>
+      {hiddenCount > 0 && (
+        <p className="mt-3 text-xs text-[var(--fg-dim)]">
+          +{hiddenCount} more update{hiddenCount === 1 ? "" : "s"} since your version.
+        </p>
+      )}
+    </div>
   );
 }
 
