@@ -2,6 +2,10 @@ import { getProviderApiKey, type ProviderSettings } from "../types";
 import type { AiClient } from "./client";
 import { createGeminiClient } from "./gemini";
 import { createOpenRouterClient } from "./openrouter";
+import { createGroqClient } from "./groq";
+import { createCerebrasClient } from "./cerebras";
+import { createMistralClient } from "./mistral";
+import { createCohereClient } from "./cohere";
 import { createOpenAiClient } from "./openai";
 import { createAnthropicClient } from "./anthropic";
 import { createDeepSeekClient } from "./deepseek";
@@ -18,6 +22,14 @@ export function getAiClient(settings: ProviderSettings): AiClient {
       return createGeminiClient(apiKey, settings.model);
     case "openrouter":
       return createOpenRouterClient(apiKey, settings.model);
+    case "groq":
+      return createGroqClient(apiKey, settings.model);
+    case "cerebras":
+      return createCerebrasClient(apiKey, settings.model);
+    case "mistral":
+      return createMistralClient(apiKey, settings.model);
+    case "cohere":
+      return createCohereClient(apiKey, settings.model);
     case "openai":
       return createOpenAiClient(apiKey, settings.model);
     case "anthropic":

@@ -56,11 +56,22 @@ Applywise defaults to Google's Gemini API, which has a free tier.
 2. Click **"Create API key"**
 3. Copy the key — you'll paste it into Applywise in the next step
 
-Prefer a wider choice of free models? [OpenRouter](https://openrouter.ai/keys)
-is the other free-tier option: one key reaches several free models (Nemotron 3,
-Tencent HY3, Gemma 4, GPT-OSS), though they're noticeably slower than Gemini's
-and share a daily cap. Pick **OpenRouter** as the provider in the next step
-instead.
+Prefer a different free provider? Several are built in — pick one in the next
+step instead of Gemini:
+
+- **[Groq](https://console.groq.com/keys)** — a genuinely free, no-card tier on
+  very fast hardware (Llama 3.3 70B, GPT-OSS 120B/20B). Note this is *not* the
+  same as Grok/xAI, which is paid.
+- **[Cerebras](https://cloud.cerebras.ai)** — 1M tokens/day free and extremely
+  fast, but the free tier caps context at ~8k tokens, so a very long resume may
+  not fit.
+- **[Mistral](https://console.mistral.ai)** — a free "Experiment" tier covering
+  all models, no card.
+- **[OpenRouter](https://openrouter.ai/keys)** — one key reaches several free
+  models (Nemotron 3, Tencent HY3, Gemma 4, GPT-OSS), though they're noticeably
+  slower than Gemini's and share a daily cap.
+- **[Cohere](https://dashboard.cohere.com/api-keys)** — a free Trial key
+  (1,000 calls/month, non-commercial).
 
 ### 4. Set up your resume and API key
 
@@ -100,12 +111,23 @@ That's it. You're done with setup.
 - **Session history**: past analyses stay listed in the sidebar of the
   results page — local to this browser only. Remove one entry at a time or
   clear the whole list with a confirm step.
-- **Switching AI providers**: on the Setup page, pick from Gemini, OpenRouter,
-  DeepSeek, GLM, OpenAI, Anthropic, or Grok (xAI) — free-tier/trial options are
-  listed first. Each has its own API key and model list; a "Custom model ID"
-  field is always available if a provider retires a model. Each provider
-  remembers its own API key — switch providers and back, and the key you
-  already saved for it is still there, no re-entering required.
+- **Switching AI providers**: on the Setup page, pick from Gemini, Groq,
+  Cerebras, OpenRouter, Mistral, Cohere, DeepSeek, GLM, OpenAI, Anthropic, or
+  Grok (xAI) — free-tier/trial options are listed first. Each has its own API key
+  and model list; you can add **multiple custom model IDs per provider** (not
+  just one) for anything not in the preset list. Each provider remembers its own
+  API key — switch providers and back, and the key you already saved for it is
+  still there, no re-entering
+  required. (Note: **Groq** at groq.com is a different provider from **Grok
+  (xAI)** — the former has a free tier, the latter is paid.)
+- **Real-time model availability check**: the Setup page checks your selected
+  provider's *live* model catalogue (fetched through the extension using your
+  saved key, cached ~1 hour) and flags any preset or custom model that's no
+  longer offered — both inline in the dropdown ("⚠ not in live list") and as a
+  note under it, so you find out a model was retired *before* an analysis fails
+  on a 404. Providers don't publish future expiry dates, so this catches
+  retirement the moment a model drops from their catalogue rather than
+  predicting a date. Needs the extension installed and a saved key.
 - **Auto-fallback to other free models**: a single toggle in the **AI provider**
   card. When it's on and your selected model times out or hits a rate limit /
   high-demand error, Applywise works down the free models — strongest first,
@@ -115,8 +137,9 @@ That's it. You're done with setup.
   the one you selected. Your saved model is never changed either way; the
   results page shows which model actually answered.
 
-  It applies to **Gemini** and **OpenRouter**, the two providers with free
-  models to fall back to, and stays inert for the others. You'll see it happen
+  It applies to the free-tier providers with several free models to fall back
+  to — **Gemini**, **Groq**, **Cerebras**, **OpenRouter**, **Mistral**, and
+  **Cohere** — and stays inert for the paid/single-key ones. You'll see it happen
   live: the floating "Analyze" button updates in real time
   ("gemini-3-flash-preview was busy — retrying with gemini-flash-latest…")
   instead of sitting on "Analyzing…" the whole time.
@@ -217,17 +240,26 @@ tested as part of this project — treat it as a starting point.
   live exchange rates, shown alongside the original figure with the correct
   per-year/per-month/per-hour period; skipped entirely when a salary has no
   actual numbers (e.g. "Negotiable").
-- **Multi-provider AI support** — Gemini, OpenRouter, DeepSeek, GLM
-  (Zhipu/Z.ai), OpenAI, Anthropic, and Grok (xAI), with free-tier/trial-credit
-  options listed first and a custom-model-ID field as an escape hatch
+- **Multi-provider AI support** — Gemini, Groq, Cerebras, OpenRouter, Mistral,
+  Cohere, DeepSeek, GLM (Zhipu/Z.ai), OpenAI, Anthropic, and Grok (xAI), with
+  free-tier/trial-credit options listed first and multiple custom-model-ID slots
+  per provider as an escape hatch. (Groq at groq.com is a distinct provider from
+  Grok/xAI — the former is free, the latter paid.)
+- **Real-time model availability check** — the Setup page validates each preset
+  and custom model against the provider's live `/models` catalogue (fetched via
+  the extension with your saved key, cached ~1 hour) and flags retired ones in
+  the dropdown and a status line, so a model that's been pulled is caught before
+  it 404s an analysis
 - **Auto-fallback across free models, with live progress** — one toggle in the
   AI provider card; when on, timeouts, rate limits, high-demand errors, and
-  responses that come back unusable all move the analysis to the next free
-  Gemini/OpenRouter model (strongest first, shown in real time on the floating
-  "Analyze" button) rather than failing it. Errors another model can't fix — a
-  bad API key, say — still surface immediately instead of burning the chain. The
-  model that actually answered is shown on the results page. Turn it off to pin
-  an analysis to exactly one model
+  responses that come back unusable all move the analysis to the next free model
+  in the same provider (strongest first, shown in real time on the floating
+  "Analyze" button) rather than failing it. Works for the free-tier providers
+  with several free models to fall back to (Gemini, Groq, Cerebras, OpenRouter,
+  Mistral, Cohere). Errors another model can't fix — a bad API key, say — still
+  surface immediately instead of burning the chain. The model that actually
+  answered is shown on the results page. Turn it off to pin an analysis to
+  exactly one model
 - **Interview prep** — up to 20 likely interview questions with suggested
   answers, generated on demand and cached so revisiting the page doesn't
   re-spend an API call
@@ -404,16 +436,21 @@ browser, never on the server.
   you reloaded the extension while a job tab was already open. Refresh that
   tab.
 - **429 rate limit error**: your AI provider's free-tier quota was hit. With
-  auto-fallback on, Gemini and OpenRouter try their other free models first —
-  if you still see this, all of them are limited; wait a bit or try a different
-  provider. On OpenRouter specifically, a 429 on one model usually just means
+  auto-fallback on, the free-tier providers (Gemini, Groq, Cerebras, OpenRouter,
+  Mistral, Cohere) try their other free models first — if you still see this,
+  all of them are limited; wait a bit or try a different provider. Some free
+  tiers (Cerebras, Cohere) cap requests per minute *account-wide*, so switching
+  models won't help there — wait for the window to reset. On OpenRouter
+  specifically, a 429 on one model usually just means
   that model's upstream host is busy (fallback routes around it), whereas every
   free model failing at once points at the shared daily cap on free models —
   check https://openrouter.ai/activity. For other providers, try a lighter
   model on the Setup page.
 - **404 "model no longer available"**: providers retire model IDs over time.
-  On the Setup page, switch **Model** to **"Custom model ID…"** and paste a
-  currently-valid ID from your provider's docs/dashboard.
+  The Setup page's real-time model check flags this ahead of time ("⚠ not in
+  live list") once you've saved a key — when you see it, pick another preset, or
+  choose **"＋ Add a custom model…"** and paste a currently-valid ID from your
+  provider's docs/dashboard (you can keep several per provider).
 - **"Failed to load extension: Manifest file is missing or unreadable"**:
   you selected the wrong folder — after unzipping the download, load the
   `applywise-extension` folder itself, not its parent.

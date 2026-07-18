@@ -436,19 +436,23 @@ function DetailTile({
 }) {
   const unavailable = value === "Not available";
   return (
-    <div className="rounded-xl border border-[var(--border)] p-3.5">
+    <div className="min-w-0 rounded-xl border border-[var(--border)] p-3.5">
       <div className="mb-1.5 flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wide text-[var(--fg-dim)]">
         {icon}
-        {label}
+        <span className="truncate">{label}</span>
       </div>
       <div
         className={
-          unavailable ? "text-sm italic text-[var(--fg-dim)]" : "text-sm font-semibold text-[var(--fg)]"
+          // break-words so a long, space-less salary/location string wraps
+          // inside its cell instead of overflowing the 2-col mobile grid.
+          unavailable
+            ? "break-words text-sm italic text-[var(--fg-dim)]"
+            : "break-words text-sm font-semibold text-[var(--fg)]"
         }
       >
         {value}
       </div>
-      {secondary && <div className="mt-0.5 text-xs text-[var(--fg-dim)]">{secondary}</div>}
+      {secondary && <div className="mt-0.5 break-words text-xs text-[var(--fg-dim)]">{secondary}</div>}
     </div>
   );
 }

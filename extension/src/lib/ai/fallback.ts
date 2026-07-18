@@ -53,6 +53,39 @@ export const FALLBACK_MODELS: Partial<Record<AiProvider, ModelTiers>> = {
     ],
     lite: ["google/gemma-4-26b-a4b-it:free", "openai/gpt-oss-20b:free"],
   },
+  // Groq's free, no-card tier on LPU hardware — genuinely fast. Llama 3.3 70B
+  // leads: it's a non-reasoning model that emits the JSON directly and reliably.
+  // gpt-oss-120b (a reasoning model) is a strong second but needs the 8192
+  // max_tokens headroom in groq.ts, or its reasoning truncates the answer. The
+  // 20B and 8B-instant are the skim-prone lite tier.
+  groq: {
+    preferred: ["llama-3.3-70b-versatile", "openai/gpt-oss-120b"],
+    lite: ["openai/gpt-oss-20b", "llama-3.1-8b-instant"],
+  },
+  // Cerebras — 1M tokens/day free. GLM-4.7 (355B) is the strongest, then
+  // gpt-oss-120b; the dense Gemma 4 31B is the faster lite fallback. Note the
+  // free-tier ~8k context cap (see cerebras.ts) — a too-long prompt errors and
+  // the chain moves on, which is exactly what the fallback is for.
+  cerebras: {
+    preferred: ["zai-glm-4.7", "gpt-oss-120b"],
+    lite: ["gemma-4-31b"],
+  },
+  // Mistral's free Experiment tier. `-latest` aliases (like gemini-flash-latest)
+  // so a version bump on Mistral's side doesn't 404 the chain: mistral-large is
+  // the flagship, magistral-medium the reasoning model, then Small 4 and the
+  // 8B edge model as the lighter fallbacks.
+  mistral: {
+    preferred: ["mistral-large-latest", "magistral-medium-latest"],
+    lite: ["mistral-small-latest", "ministral-8b-latest"],
+  },
+  // Cohere's free Trial key, via its OpenAI-compatible surface. Command A is the
+  // flagship; the R-series and the small r7b are the lighter fallbacks. The
+  // 20 RPM limit is account-wide, so hopping models only helps for a per-model
+  // hiccup, not the shared cap (surfaced in the rate-limit hint).
+  cohere: {
+    preferred: ["command-a-03-2025", "command-r-plus-08-2024"],
+    lite: ["command-r-08-2024", "command-r7b-12-2024"],
+  },
 };
 
 /** Whether this provider has a free-tier model chain worth falling back across. */
@@ -204,6 +237,11 @@ export function isRetryableAiError(err: unknown): boolean {
     /timed out/i.test(msg) ||
     /rate limit reached \(429\)/i.test(msg) ||
     /API error 50[0234]/i.test(msg) ||
+    // 413 "request too large": on free tiers (Groq especially) this is a
+    // per-minute-token (TPM) ceiling on a single request, not a permanently
+    // oversized payload — a rate-limit in disguise. Hopping to another model
+    // (different TPM/context budget) is a real recovery, same as a 429.
+    /API error 413/i.test(msg) ||
     /overloaded/i.test(msg) ||
     /Could not reach/i.test(msg) ||
     // OpenRouter routes to third-party hosts that sometimes return 200 with an

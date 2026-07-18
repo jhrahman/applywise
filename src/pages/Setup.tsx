@@ -10,6 +10,10 @@ import {
   Monitor,
   ArrowRight,
   Shuffle,
+  Plus,
+  X,
+  AlertTriangle,
+  ShieldCheck,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -22,7 +26,8 @@ import { extractTextFromPdf } from "@/lib/pdf";
 import { getItem, setItem, STORAGE_KEYS } from "@/lib/storage";
 import { cn } from "@/lib/utils";
 import { useExtensionVersion } from "@/hooks/useExtensionVersion";
-import { FALLBACK_PROVIDERS, MODELS, PROVIDER_OPTIONS } from "./setup-models";
+import { useModelCatalog, isModelLive } from "@/hooks/useModelCatalog";
+import { FALLBACK_PROVIDERS, MODELS, PROVIDER_OPTIONS, providerDisplayName } from "./setup-models";
 import { getProviderApiKey, normalizeSettings } from "@/types";
 import type { AiProvider, ProviderSettings, Resume } from "@/types";
 
@@ -35,8 +40,6 @@ const DEFAULT_SETTINGS: ProviderSettings = {
   fallbackEnabled: true,
 };
 
-const CUSTOM_MODEL = "__custom__";
-
 export function Setup() {
   const [resumes, setResumes] = useState<Resume[]>([]);
   const [settings, setSettings] = useState<ProviderSettings>(DEFAULT_SETTINGS);
@@ -46,6 +49,10 @@ export function Setup() {
   const [saved, setSaved] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [loaded, setLoaded] = useState(false);
+  // Bumped after a save so the live model check re-runs against the freshly
+  // saved key (the background worker reads the key from storage, not this
+  // in-memory draft).
+  const [modelCheckKey, setModelCheckKey] = useState(0);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const {
     installed: extensionInstalled,
@@ -132,6 +139,8 @@ export function Setup() {
     try {
       await persistSettings(settings);
       setSaved(true);
+      // Re-check model availability now that the key is actually stored.
+      setModelCheckKey((k) => k + 1);
       setTimeout(() => setSaved(false), 2400);
     } catch (err) {
       setSaveError(err instanceof Error ? err.message : "Failed to save settings. Please try again.");
@@ -140,7 +149,28 @@ export function Setup() {
     }
   }
 
-  const isCustomModel = !MODELS[settings.provider].some((m) => m.value === settings.model);
+  function selectModel(model: string) {
+    setSettings((s) => ({ ...s, model }));
+  }
+
+  function addCustomModel(id: string) {
+    const trimmed = id.trim();
+    if (!trimmed) return;
+    setSettings((s) => {
+      const existing = s.customModels?.[s.provider] ?? [];
+      const list = existing.includes(trimmed) ? existing : [...existing, trimmed];
+      return { ...s, model: trimmed, customModels: { ...s.customModels, [s.provider]: list } };
+    });
+  }
+
+  function removeCustomModel(id: string) {
+    setSettings((s) => {
+      const existing = s.customModels?.[s.provider] ?? [];
+      const list = existing.filter((m) => m !== id);
+      const model = s.model === id ? MODELS[s.provider][0].value : s.model;
+      return { ...s, model, customModels: { ...s.customModels, [s.provider]: list } };
+    });
+  }
 
   if (!loaded) return null;
 
@@ -241,39 +271,16 @@ export function Setup() {
             </Select>
           </div>
 
-          <div className="flex flex-col gap-1.5">
-            <Label>Model</Label>
-            <Select
-              value={isCustomModel ? CUSTOM_MODEL : settings.model}
-              onChange={(e) => {
-                if (e.target.value === CUSTOM_MODEL) {
-                  setSettings({ ...settings, model: "" });
-                } else {
-                  setSettings({ ...settings, model: e.target.value });
-                }
-              }}
-            >
-              {MODELS[settings.provider].map((m) => (
-                <option key={m.value} value={m.value}>
-                  {m.label}
-                </option>
-              ))}
-              <option value={CUSTOM_MODEL}>Custom model ID…</option>
-            </Select>
-            {isCustomModel && (
-              <>
-                <Input
-                  placeholder="e.g. gemini-2.0-flash"
-                  value={settings.model}
-                  onChange={(e) => setSettings({ ...settings, model: e.target.value })}
-                />
-                <p className="text-xs text-[var(--fg-dim)]">
-                  Provider IDs change over time — grab the current one from your provider's model
-                  list (e.g. aistudio.google.com for Gemini) if a preset stops working.
-                </p>
-              </>
-            )}
-          </div>
+          <ModelPicker
+            provider={settings.provider}
+            model={settings.model}
+            customModels={settings.customModels?.[settings.provider] ?? []}
+            hasKey={getProviderApiKey(settings).length > 0}
+            refreshKey={modelCheckKey}
+            onSelect={selectModel}
+            onAddCustom={addCustomModel}
+            onRemoveCustom={removeCustomModel}
+          />
 
           <div className="flex flex-col gap-1.5">
             <Label>API key</Label>
@@ -322,6 +329,258 @@ export function Setup() {
   );
 }
 
+// Sentinel option value that opens the "add a custom model" input rather than
+// selecting a real model.
+const ADD_CUSTOM_SENTINEL = "__add_custom_model__";
+
+function relativeTime(ts: number): string {
+  const seconds = Math.max(0, Math.round((Date.now() - ts) / 1000));
+  if (seconds < 45) return "just now";
+  const minutes = Math.round(seconds / 60);
+  if (minutes < 60) return `${minutes}m ago`;
+  const hours = Math.round(minutes / 60);
+  if (hours < 24) return `${hours}h ago`;
+  return `${Math.round(hours / 24)}d ago`;
+}
+
+/**
+ * Model dropdown with (1) multiple custom model IDs per provider and (2) a
+ * real-time availability check: each provider's live /models list is fetched
+ * through the extension and cached ~1h, and any preset/custom model missing
+ * from it is flagged as likely-retired — both inline in the dropdown and in the
+ * status line below.
+ */
+function ModelPicker({
+  provider,
+  model,
+  customModels,
+  hasKey,
+  refreshKey,
+  onSelect,
+  onAddCustom,
+  onRemoveCustom,
+}: {
+  provider: AiProvider;
+  model: string;
+  customModels: string[];
+  hasKey: boolean;
+  refreshKey: number;
+  onSelect: (id: string) => void;
+  onAddCustom: (id: string) => void;
+  onRemoveCustom: (id: string) => void;
+}) {
+  const { liveModels, checkedAt, loading, error } = useModelCatalog(provider, hasKey, refreshKey);
+  const [adding, setAdding] = useState(false);
+  const [draft, setDraft] = useState("");
+
+  const presets = MODELS[provider];
+  const presetValues = new Set(presets.map((m) => m.value));
+  const providerLabel = providerDisplayName(provider);
+
+  // A legacy single custom ID (saved before multi-custom shipped) may be the
+  // selected model without being in either list — render it so the controlled
+  // <select> can display it as the current value.
+  const isOrphanCustom = model.length > 0 && !presetValues.has(model) && !customModels.includes(model);
+
+  const retiredMarker = (value: string) =>
+    isModelLive(value, liveModels) === false ? " · ⚠ not in live list" : "";
+
+  function commitAdd() {
+    const trimmed = draft.trim();
+    if (!trimmed) return;
+    onAddCustom(trimmed);
+    setDraft("");
+    setAdding(false);
+  }
+
+  return (
+    <div className="flex flex-col gap-2">
+      <Label>Model</Label>
+      <Select
+        value={model}
+        onChange={(e) => {
+          if (e.target.value === ADD_CUSTOM_SENTINEL) {
+            setAdding(true);
+            return;
+          }
+          onSelect(e.target.value);
+        }}
+      >
+        {presets.map((m) => (
+          <option key={m.value} value={m.value}>
+            {m.label}
+            {retiredMarker(m.value)}
+          </option>
+        ))}
+        {customModels.length > 0 && (
+          <optgroup label="Your custom models">
+            {customModels.map((c) => (
+              <option key={c} value={c}>
+                {c} (custom){retiredMarker(c)}
+              </option>
+            ))}
+          </optgroup>
+        )}
+        {isOrphanCustom && (
+          <option value={model}>
+            {model} (custom){retiredMarker(model)}
+          </option>
+        )}
+        <option value={ADD_CUSTOM_SENTINEL}>＋ Add a custom model…</option>
+      </Select>
+
+      {adding && (
+        <div className="flex flex-col gap-2 rounded-lg border border-[var(--border)] p-3">
+          <div className="flex flex-col gap-2 sm:flex-row">
+            <Input
+              placeholder="e.g. gemini-2.0-flash"
+              value={draft}
+              onChange={(e) => setDraft(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  e.preventDefault();
+                  commitAdd();
+                }
+              }}
+              autoFocus
+            />
+            <div className="flex gap-2">
+              <Button
+                type="button"
+                onClick={commitAdd}
+                disabled={!draft.trim()}
+                className="flex-1 sm:flex-none"
+              >
+                <Plus size={15} />
+                Add
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => {
+                  setAdding(false);
+                  setDraft("");
+                }}
+                className="flex-1 sm:flex-none"
+              >
+                Cancel
+              </Button>
+            </div>
+          </div>
+          <p className="text-xs text-[var(--fg-dim)]">
+            Paste any model ID this provider supports — it's added to the list below and selected.
+            You can keep several per provider and switch between them anytime.
+          </p>
+        </div>
+      )}
+
+      {customModels.length > 0 && (
+        <div className="flex flex-wrap gap-1.5">
+          {customModels.map((c) => (
+            <span
+              key={c}
+              className="inline-flex max-w-full items-center gap-1 rounded-full border border-[var(--border)] py-1 pl-2.5 pr-1 text-xs"
+            >
+              {isModelLive(c, liveModels) === false && (
+                <AlertTriangle size={11} className="shrink-0 text-[var(--status-warn-text)]" />
+              )}
+              <span className="truncate font-medium">{c}</span>
+              <button
+                type="button"
+                onClick={() => onRemoveCustom(c)}
+                aria-label={`Remove custom model ${c}`}
+                className="shrink-0 rounded-full p-0.5 text-[var(--fg-dim)] transition-colors hover:text-[var(--status-bad-text)]"
+              >
+                <X size={12} />
+              </button>
+            </span>
+          ))}
+        </div>
+      )}
+
+      <ModelCheckStatus
+        providerLabel={providerLabel}
+        hasKey={hasKey}
+        loading={loading}
+        error={error}
+        checkedAt={checkedAt}
+        selectedLive={isModelLive(model, liveModels)}
+        model={model}
+      />
+    </div>
+  );
+}
+
+// The status line under the model dropdown — the human-readable result of the
+// real-time availability check. Deliberately quiet for the common "all good"
+// case and loud only when the selected model looks retired.
+function ModelCheckStatus({
+  providerLabel,
+  hasKey,
+  loading,
+  error,
+  checkedAt,
+  selectedLive,
+  model,
+}: {
+  providerLabel: string;
+  hasKey: boolean;
+  loading: boolean;
+  error: string | null;
+  checkedAt: number | null;
+  selectedLive: boolean | null;
+  model: string;
+}) {
+  if (!hasKey) {
+    return (
+      <p className="text-xs text-[var(--fg-dim)]">
+        Save an API key to check which models are still live on {providerLabel} in real time.
+      </p>
+    );
+  }
+  if (loading) {
+    return (
+      <p className="flex items-center gap-1.5 text-xs text-[var(--fg-dim)]">
+        <Loader2 size={12} className="animate-spin" />
+        Checking {providerLabel}'s live model list…
+      </p>
+    );
+  }
+  if (error) {
+    return (
+      <p className="text-xs text-[var(--fg-dim)]">
+        Couldn't verify models against {providerLabel} right now — {error}
+      </p>
+    );
+  }
+  if (selectedLive === false) {
+    return (
+      <p
+        className="flex items-start gap-1.5 rounded-lg px-2.5 py-2 text-xs font-medium"
+        style={{ color: "var(--status-warn-text)", backgroundColor: "var(--status-warn-bg)" }}
+      >
+        <AlertTriangle size={13} className="mt-0.5 shrink-0" />
+        <span>
+          "{model}" isn't in {providerLabel}'s current model list — it may have been retired or
+          renamed. Pick another model, or update the ID if the provider changed it.
+        </span>
+      </p>
+    );
+  }
+  if (selectedLive === true && checkedAt != null) {
+    return (
+      <p
+        className="flex items-center gap-1.5 text-xs font-medium"
+        style={{ color: "var(--status-good-text)" }}
+      >
+        <ShieldCheck size={13} className="shrink-0" />
+        Verified live on {providerLabel} · checked {relativeTime(checkedAt)}
+      </p>
+    );
+  }
+  return null;
+}
+
 /**
  * The one global switch over the whole fallback strategy. On, a busy or
  * rate-limited model hands off to the next free one so an analysis still
@@ -343,7 +602,7 @@ function FallbackToggle({
   onChange: (enabled: boolean) => void;
 }) {
   const supported = FALLBACK_PROVIDERS.includes(provider);
-  const providerLabel = provider === "openrouter" ? "OpenRouter" : "Gemini";
+  const providerLabel = providerDisplayName(provider);
 
   return (
     <div
@@ -364,8 +623,8 @@ function FallbackToggle({
             </>
           ) : (
             <>
-              Only available for Gemini and OpenRouter, the providers with free models to fall
-              back to. Analyses always use the model selected above.
+              Only available for the free-tier providers, the ones with several free models to
+              fall back to. Analyses always use the model selected above.
             </>
           )}
         </p>

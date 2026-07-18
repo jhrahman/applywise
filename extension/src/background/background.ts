@@ -4,13 +4,15 @@ import { getAiClient, AiRequestError } from "../lib/ai";
 import { withModelFallback, type AttemptInfo } from "../lib/ai/fallback";
 import { browserApi } from "../lib/browser-api";
 import { getProviderApiKey, normalizeSettings } from "../lib/types";
-import type { Resume, ProviderSettings, JobEntry, JobPosting } from "../lib/types";
+import { listProviderModels } from "../lib/ai/list-models";
+import type { AiProvider, Resume, ProviderSettings, JobEntry, JobPosting } from "../lib/types";
 import type {
   ExtensionMessage,
   GetResumesResponse,
   AnalyzeResponse,
   AnalyzeProgressMessage,
   GenerateInterviewQuestionsResponse,
+  ListModelsResponse,
 } from "../lib/messages";
 
 const DEFAULT_SETTINGS: ProviderSettings = {
@@ -40,6 +42,10 @@ browserApi.runtime.onMessage.addListener((message: ExtensionMessage, sender, sen
   }
   if (message.type === "GENERATE_INTERVIEW_QUESTIONS") {
     handleGenerateInterviewQuestions(message.jobId).then(sendResponse);
+    return true;
+  }
+  if (message.type === "LIST_MODELS") {
+    handleListModels(message.provider).then(sendResponse);
     return true;
   }
   return false;
@@ -74,6 +80,25 @@ function describeAiError(err: unknown): string {
     : err instanceof Error
       ? `Couldn't parse the AI response: ${err.message}`
       : "The AI call failed for an unknown reason.";
+}
+
+/**
+ * Fetches a provider's live model catalogue (see lib/ai/list-models) using that
+ * provider's saved key, so the Setup page can flag retired models in real time.
+ * Reads the key straight from the per-provider map rather than getProviderApiKey
+ * (which is scoped to the *currently selected* provider) — Setup checks whichever
+ * provider the user is looking at, not necessarily the active one.
+ */
+async function handleListModels(provider: AiProvider): Promise<ListModelsResponse> {
+  const settings = await loadSettings();
+  const apiKey = settings.apiKeys?.[provider] ?? "";
+  if (!apiKey) return { ok: false, error: "No API key saved for this provider yet." };
+  try {
+    const models = await listProviderModels(provider, apiKey);
+    return { ok: true, models };
+  } catch (err) {
+    return { ok: false, error: err instanceof Error ? err.message : "Couldn't fetch the model list." };
+  }
 }
 
 async function handleGetResumes(): Promise<GetResumesResponse> {

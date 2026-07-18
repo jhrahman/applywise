@@ -44,6 +44,17 @@ export function createOpenAiCompatibleClient(options: {
    * it times out.
    */
   timeoutMs?: number;
+  /**
+   * Caps the completion length via `max_tokens`. Matters most for *reasoning*
+   * models (e.g. Groq's gpt-oss): they spend thousands of hidden tokens
+   * reasoning before emitting the answer, and a provider's default completion
+   * cap can be low enough (Groq's gpt-oss default is ~3k) that the reasoning
+   * exhausts it and the JSON comes back truncated or empty. A generous value
+   * gives the reasoning room *and* leaves space for the full JSON. Left unset
+   * for providers where it's risky — notably OpenAI, whose newer reasoning
+   * models reject `max_tokens` in favour of `max_completion_tokens`.
+   */
+  maxTokens?: number;
   /** Extra request headers (e.g. OpenRouter's attribution headers). */
   extraHeaders?: Record<string, string>;
 }): AiClient {
@@ -55,6 +66,7 @@ export function createOpenAiCompatibleClient(options: {
     useJsonSchema = false,
     thoroughMatchPrompt = false,
     timeoutMs,
+    maxTokens,
     extraHeaders,
   } = options;
 
@@ -69,6 +81,7 @@ export function createOpenAiCompatibleClient(options: {
       messages: [{ role: "user", content: prompt }],
       temperature,
     };
+    if (maxTokens != null) body.max_tokens = maxTokens;
     if (useJsonSchema) {
       body.response_format = {
         type: "json_schema",

@@ -82,6 +82,21 @@ export async function bridgeGetExtensionVersion(): Promise<string> {
   return sendBridgeRequest<string>({ type: "GET_VERSION" }, 500);
 }
 
+/**
+ * The provider's live model catalogue, fetched by the extension's background
+ * worker (the web page can't call provider APIs directly — CORS). Used by the
+ * Setup page to flag models that are no longer offered. Given a generous
+ * timeout since it's a real network round-trip through the provider, with an
+ * honest message so a slow provider doesn't read as "extension missing".
+ */
+export async function bridgeListModels(provider: string): Promise<string[]> {
+  return sendBridgeRequest<string[]>(
+    { type: "LIST_MODELS", provider },
+    20_000,
+    "Checking the provider's model list is taking longer than usual — the provider may be slow to respond. You can keep using the models below in the meantime."
+  );
+}
+
 export async function bridgeStorageGet<T>(key: string): Promise<T | null> {
   try {
     return await sendBridgeRequest<T | null>({ type: "STORAGE_GET", key });

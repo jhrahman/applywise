@@ -10,6 +10,7 @@ export type BridgeRequest =
   | { type: "STORAGE_GET"; key: string }
   | { type: "STORAGE_SET"; key: string; value: unknown }
   | { type: "GENERATE_INTERVIEW_QUESTIONS"; jobId: string }
+  | { type: "LIST_MODELS"; provider: string }
   | { type: "GET_VERSION" }
   | { type: "PING" };
 

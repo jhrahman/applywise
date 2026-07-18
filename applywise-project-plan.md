@@ -9,9 +9,10 @@ decisions, but the [root README](README.md) is the source of truth for what
 Applywise actually does today. Phases 1–5 below are complete and live at
 [applywise-copilot.vercel.app](https://applywise-copilot.vercel.app/), plus a
 fair amount built past the original plan: multi-provider AI support (Gemini,
-DeepSeek, GLM, OpenAI, Anthropic, Grok/xAI, not just Gemini+one paid
-provider), automatic Gemini model fallback with live progress shown on the
-floating button, a deterministic scoring rubric (see
+Groq, Cerebras, OpenRouter, Mistral, Cohere, DeepSeek, GLM, OpenAI, Anthropic,
+Grok/xAI, not just Gemini+one paid provider), automatic free-model fallback
+with live progress shown on the floating button, a deterministic scoring rubric
+(see
 [AI workflow](#ai-workflow) below — this replaced an earlier freeform-score
 approach after it proved inconsistent run-to-run), salary/location/work-mode/
 experience-required/benefits extraction with BDT conversion, a one-click
@@ -87,7 +88,7 @@ No fetch to any Applywise-owned server happens at any point in this flow.
 | Web app | Static React/Vite (or Next.js static export) — no server runtime needed |
 | Styling | Tailwind CSS + shadcn/ui |
 | State/persistence | `chrome.storage.local` (extension) + `IndexedDB` (web app, if needed for larger session data) |
-| AI | Gemini API (free tier, default) — user can add their own key for another provider and pick a model. Shipped with six: Gemini, DeepSeek, GLM, OpenAI, Anthropic, Grok (xAI) |
+| AI | Gemini API (free tier, default) — user can add their own key for another provider and pick a model. Now ships with eleven: Gemini, Groq, Cerebras, OpenRouter, Mistral, Cohere, DeepSeek, GLM, OpenAI, Anthropic, Grok (xAI) |
 | Extension | Chrome Extension, Manifest V3, any job site via generic extractor |
 | Hosting | Vercel (free tier), static export — no server runtime needed |
 

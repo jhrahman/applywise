@@ -7,7 +7,14 @@ import type { AiProvider } from "@/types";
 
 // Providers whose models the fallback chain can hop across. The order it tries
 // them in lives in extension/src/lib/ai/fallback.ts.
-export const FALLBACK_PROVIDERS: AiProvider[] = ["gemini", "openrouter"];
+export const FALLBACK_PROVIDERS: AiProvider[] = [
+  "gemini",
+  "openrouter",
+  "groq",
+  "cerebras",
+  "mistral",
+  "cohere",
+];
 
 // Model IDs below are verified against each provider's own docs (see chat
 // history / commit notes) rather than guessed — providers retire IDs over
@@ -55,6 +62,40 @@ export const MODELS: Record<AiProvider, { label: string; value: string }[]> = {
     },
     { label: "GPT-OSS 20B — smallest, shallowest skill matching", value: "openai/gpt-oss-20b:free" },
   ],
+  // Groq's free, no-card tier on LPU hardware — the fastest of the free
+  // providers. Values (and their order) mirror the fallback chain in
+  // extension/src/lib/ai/fallback.ts exactly — verify-model-lists.mjs enforces
+  // it. IDs verified against https://console.groq.com/docs/models.
+  groq: [
+    { label: "Llama 3.3 70B Versatile — reliable, recommended", value: "llama-3.3-70b-versatile" },
+    { label: "GPT-OSS 120B — strong reasoning", value: "openai/gpt-oss-120b" },
+    { label: "GPT-OSS 20B — fast, shallower skill matching", value: "openai/gpt-oss-20b" },
+    { label: "Llama 3.1 8B Instant — fastest, shallowest matching", value: "llama-3.1-8b-instant" },
+  ],
+  // Cerebras — 1M tokens/day free, ultra-fast. Heads-up: the free tier caps
+  // total context at ~8k tokens, so a long resume + our prompt can overflow and
+  // error (auto-fallback then moves on). IDs from inference-docs.cerebras.ai.
+  cerebras: [
+    { label: "GLM 4.7 — strongest reasoning, recommended", value: "zai-glm-4.7" },
+    { label: "GPT-OSS 120B — strong, general purpose", value: "gpt-oss-120b" },
+    { label: "Gemma 4 31B — fast, shallower skill matching", value: "gemma-4-31b" },
+  ],
+  // Mistral's free Experiment tier. `-latest` aliases so a version bump doesn't
+  // 404. IDs from docs.mistral.ai/models.
+  mistral: [
+    { label: "Mistral Large — flagship, recommended", value: "mistral-large-latest" },
+    { label: "Magistral Medium — strong reasoning", value: "magistral-medium-latest" },
+    { label: "Mistral Small — fast, shallower matching", value: "mistral-small-latest" },
+    { label: "Ministral 8B — fastest, shallowest matching", value: "ministral-8b-latest" },
+  ],
+  // Cohere's free Trial key (1,000 calls/month, non-commercial), via its
+  // OpenAI-compatible surface. IDs from docs.cohere.com.
+  cohere: [
+    { label: "Command A — flagship, recommended", value: "command-a-03-2025" },
+    { label: "Command R+ — strong, general purpose", value: "command-r-plus-08-2024" },
+    { label: "Command R — faster", value: "command-r-08-2024" },
+    { label: "Command R7B — smallest, fastest", value: "command-r7b-12-2024" },
+  ],
   // New-account trial credits (not an ongoing free tier), then pay-as-you-go.
   deepseek: [
     { label: "DeepSeek V4 Flash — fast, cheap", value: "deepseek-v4-flash" },
@@ -76,15 +117,29 @@ export const MODELS: Record<AiProvider, { label: string; value: string }[]> = {
     { label: "Claude Sonnet 5 — agentic default", value: "claude-sonnet-5" },
     { label: "Claude Opus 4.8 — flagship", value: "claude-opus-4-8" },
   ],
+  // xAI's Grok (api.x.ai) — paid, no free tier. Distinct from the Groq provider
+  // above. IDs from docs.x.ai/developers/models (grok-4.5 is the current
+  // recommended chat model; retired IDs redirect server-side).
   xai: [
-    { label: "Grok Code Fast 1 — fast, coding-focused", value: "grok-code-fast-1" },
-    { label: "Grok 4.5 — flagship", value: "grok-4.5" },
+    { label: "Grok 4.5 — flagship, recommended", value: "grok-4.5" },
+    { label: "Grok 4.1 Fast — fast, agentic, 2M context", value: "grok-4.1-fast-reasoning" },
+    { label: "Grok Code Fast 1 — coding-focused", value: "grok-code-fast-1" },
   ],
 };
 
+/** The provider's short display name (the part before "— free tier" etc.). */
+export function providerDisplayName(provider: AiProvider): string {
+  return PROVIDER_OPTIONS.find((o) => o.value === provider)?.label.split(" — ")[0] ?? provider;
+}
+
 export const PROVIDER_OPTIONS: { value: AiProvider; label: string }[] = [
+  // Ongoing free tiers first, then trial credits, then paid.
   { value: "gemini", label: "Gemini — free tier" },
+  { value: "groq", label: "Groq — free tier" },
+  { value: "cerebras", label: "Cerebras — free tier" },
   { value: "openrouter", label: "OpenRouter — free tier" },
+  { value: "mistral", label: "Mistral — free tier" },
+  { value: "cohere", label: "Cohere — free trial (1k calls/mo)" },
   { value: "deepseek", label: "DeepSeek — free trial credits" },
   { value: "glm", label: "GLM (Zhipu / Z.ai) — free trial credits" },
   { value: "openai", label: "OpenAI — paid" },

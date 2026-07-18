@@ -1,9 +1,14 @@
-import type { JobEntry, JobPosting } from "./types";
+import type { AiProvider, JobEntry, JobPosting } from "./types";
 
 export type ExtensionMessage =
   | { type: "GET_RESUMES" }
   | { type: "ANALYZE"; job: JobPosting; resumeId: string }
-  | { type: "GENERATE_INTERVIEW_QUESTIONS"; jobId: string };
+  | { type: "GENERATE_INTERVIEW_QUESTIONS"; jobId: string }
+  | { type: "LIST_MODELS"; provider: AiProvider };
+
+export type ListModelsResponse =
+  | { ok: true; models: string[] }
+  | { ok: false; error: string };
 
 export interface GetResumesResponse {
   resumes: { id: string; profileName: string }[];

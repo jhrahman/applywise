@@ -110,6 +110,22 @@ const RATE_LIMIT_HINTS: Record<string, string> = {
   OpenRouter:
     "A \":free\" model is usually rate-limited on its own upstream host, so leaving auto-fallback on (Setup page) lets another free model take over. " +
     "If every free model is limited, you've likely hit the shared daily cap on free models instead — check https://openrouter.ai/activity. It resets daily, and adding credits raises it.",
+  // Genuine free tiers — a 429 usually means you hit the per-minute/day cap on
+  // the model you picked; auto-fallback (Setup page) hops to another free model
+  // in the same provider, which clears a per-model hiccup but not an
+  // account-wide cap.
+  Groq:
+    "Groq's free tier is rate-limited per minute and per day — check your usage at https://console.groq.com/settings/limits. " +
+    "Leave auto-fallback on (Setup page) to hop to another free Groq model, or wait for the per-minute window to reset.",
+  Cerebras:
+    "Cerebras' free tier caps requests per minute (and total context at ~8k tokens) — see https://cloud.cerebras.ai. " +
+    "The per-minute limit is account-wide across models, so if every free model is limited, wait for the window to reset rather than switching models.",
+  Mistral:
+    "Mistral's free Experiment tier is rate-limited — check https://console.mistral.ai. " +
+    "Auto-fallback (Setup page) tries other free Mistral models; a persistent limit means waiting for the window to reset.",
+  Cohere:
+    "Cohere's free Trial key allows ~20 requests/minute and 1,000 calls/month, shared across every model — see https://dashboard.cohere.com. " +
+    "That cap is account-wide, so switching models won't route around it; wait for the window to reset or move to another provider.",
   OpenAI: "Check your usage and rate limits at https://platform.openai.com/usage.",
   Anthropic: "Check your usage and rate limits at https://console.anthropic.com/settings/usage.",
   DeepSeek: "Check your usage and rate limits at https://platform.deepseek.com/usage.",

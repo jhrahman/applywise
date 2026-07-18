@@ -9,6 +9,10 @@ export interface Resume {
 export type AiProvider =
   | "gemini"
   | "openrouter"
+  | "groq"
+  | "cerebras"
+  | "mistral"
+  | "cohere"
   | "openai"
   | "anthropic"
   | "deepseek"
@@ -36,6 +40,11 @@ export interface ProviderSettings {
   // records default to enabled instead of silently losing the fallback they
   // already had.
   fallbackEnabled?: boolean;
+  // User-added custom model IDs, per provider — so a provider that retires a
+  // preset (or has models we don't list) can still be used, and more than one
+  // at a time. Partial/optional for backward compatibility; normalizeSettings
+  // defaults it to {}.
+  customModels?: Partial<Record<AiProvider, string[]>>;
 }
 
 /**
@@ -62,6 +71,7 @@ export function normalizeSettings(settings: ProviderSettings): ProviderSettings 
     ...settings,
     apiKeys,
     fallbackEnabled: settings.fallbackEnabled ?? true,
+    customModels: settings.customModels ?? {},
   };
 }
 

@@ -55,4 +55,7 @@ export const STORAGE_KEYS = {
   providerSettings: "applywise:providerSettings",
   theme: "applywise:theme",
   jobHistory: "applywise:jobHistory",
+  // Cache of each provider's live model list (see Setup's real-time model
+  // check), keyed by provider with a fetch timestamp so it can expire.
+  modelCatalog: "applywise:modelCatalog",
 } as const;

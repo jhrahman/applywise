@@ -12,7 +12,12 @@ import {
   type BridgeRequest,
   type BridgeResponseMessage,
 } from "../lib/bridge-protocol";
-import type { ExtensionMessage, GenerateInterviewQuestionsResponse } from "../lib/messages";
+import type {
+  ExtensionMessage,
+  GenerateInterviewQuestionsResponse,
+  ListModelsResponse,
+} from "../lib/messages";
+import type { AiProvider } from "../lib/types";
 
 window.addEventListener("message", (event) => {
   if (event.source !== window) return;
@@ -52,6 +57,17 @@ async function handleRequest(request: BridgeRequest): Promise<unknown> {
       const response: GenerateInterviewQuestionsResponse = await browserApi.runtime.sendMessage(message);
       if (!response.ok) throw new Error(response.error);
       return response.entry;
+    }
+    case "LIST_MODELS": {
+      // The models fetch is cross-origin and authenticated, so it must run in
+      // the background worker (like ANALYZE), not here in the page context.
+      const message: ExtensionMessage = {
+        type: "LIST_MODELS",
+        provider: request.provider as AiProvider,
+      };
+      const response: ListModelsResponse = await browserApi.runtime.sendMessage(message);
+      if (!response.ok) throw new Error(response.error);
+      return response.models;
     }
   }
 }
