@@ -203,7 +203,10 @@ tested as part of this project — treat it as a starting point.
   preview never gets analyzed by mistake. Nothing keys off hashed CSS class
   names, which churn every deploy.
 - **Job details extraction** — employment type, work mode (remote/hybrid/
-  onsite), location, company, and salary, read directly from the posting.
+  onsite), location, company, salary, required experience (e.g. "3-5 years",
+  "Entry level"), and a benefits/perks list (provident fund, gratuity, gym
+  membership, parental leave, festival/performance bonus, flexible hours,
+  medical allowance, and the like), read directly from the posting.
   Works across languages (a posting in Japanese or Bengali still gets a
   readable English location), across boards with non-standard markup (skill
   chip widgets, overview boxes rendered outside the main description), and

@@ -740,15 +740,19 @@ export async function prepareJobDom(): Promise<void> {
 
 // Section headings that mark the end of the actual posting and the start of a
 // board's own recommendation/footer widgets — LinkedIn appends several of these
-// right after the description ("Benefits found in job post" is its own parsed
-// summary; "Set alert for similar jobs" / "People also viewed" are unrelated
-// job feeds). When the extracted container sweeps one in, everything from that
-// heading onward is board furniture, not the job — so the description is cut
-// there. All are distinctive multi-word UI strings that don't occur as short
-// standalone lines inside a real description.
+// right after the description ("Set alert for similar jobs" / "People also
+// viewed" are unrelated job feeds). When the extracted container sweeps one in,
+// everything from that heading onward is board furniture, not the job — so the
+// description is cut there. All are distinctive multi-word UI strings that don't
+// occur as short standalone lines inside a real description.
+//
+// Deliberately NOT included: LinkedIn's "Benefits found in job post" heading.
+// That section is a genuine, board-parsed benefits summary (medical insurance,
+// 401(k), etc.) we now want the AI to read into jobDetails.benefits — so it's
+// left in the description. The recommendation-feed headings below still appear
+// after it on LinkedIn, so the description is still cut before the real furniture.
 const TRAILING_NOISE_HEADINGS = [
   "set alert for similar jobs",
-  "benefits found in job post",
   "people also viewed",
   "similar jobs",
   "jobs you may be interested in",

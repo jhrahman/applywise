@@ -12,6 +12,8 @@ import {
   Building2,
   MapPin,
   Banknote,
+  Clock,
+  Gift,
   Trash2,
   X,
   Cpu,
@@ -519,7 +521,7 @@ function JobDetailsGrid({ job, jobDetails }: { job: JobPosting; jobDetails: JobD
   const location = job.location ?? jobDetails.location ?? "Not available";
 
   return (
-    <div className="grid grid-cols-1 gap-3 xs:grid-cols-2 sm:grid-cols-4">
+    <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
       <DetailTile
         icon={<Briefcase size={12} />}
         label="Employment type"
@@ -530,6 +532,11 @@ function JobDetailsGrid({ job, jobDetails }: { job: JobPosting; jobDetails: JobD
         label="Work mode"
         value={jobDetails.workMode ?? "Not available"}
       />
+      <DetailTile
+        icon={<Clock size={12} />}
+        label="Experience"
+        value={jobDetails.experienceRequired ?? "Not available"}
+      />
       <DetailTile icon={<MapPin size={12} />} label="Location" value={location} />
       <DetailTile
         icon={<Banknote size={12} />}
@@ -537,6 +544,33 @@ function JobDetailsGrid({ job, jobDetails }: { job: JobPosting; jobDetails: JobD
         value={salary?.raw ?? "Not available"}
         secondary={salary ? formatBdtSecondary(salary, converted) : undefined}
       />
+    </div>
+  );
+}
+
+// Perks the posting states, rendered as their own rounded-pill row — a list,
+// unlike the single-value tiles above, so it gets a chip group rather than a
+// DetailTile. Hidden entirely when the posting names no benefits (or for
+// history entries saved before this field existed), since an empty "Benefits"
+// header reads as missing data rather than a clean result.
+function BenefitsRow({ benefits }: { benefits: string[] }) {
+  if (benefits.length === 0) return null;
+  return (
+    <div>
+      <div className="mb-2 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-[var(--fg-dim)]">
+        <Gift size={13} />
+        Benefits &amp; perks
+      </div>
+      <div className="flex flex-wrap gap-1.5">
+        {benefits.map((b) => (
+          <span
+            key={b}
+            className="rounded-full border border-[var(--border)] bg-accent-1/5 px-2.5 py-1 text-xs font-semibold text-[var(--fg)]"
+          >
+            {b}
+          </span>
+        ))}
+      </div>
     </div>
   );
 }
@@ -620,12 +654,16 @@ function JobResultCard({
             analysis.jobDetails ?? {
               company: null,
               employmentType: null,
+              experienceRequired: null,
               location: null,
               workMode: null,
               salary: null,
+              benefits: [],
             }
           }
         />
+
+        <BenefitsRow benefits={analysis.jobDetails?.benefits ?? []} />
 
         <ScoreMeter score={analysis.matchScore} />
 

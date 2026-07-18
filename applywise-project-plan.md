@@ -13,8 +13,9 @@ DeepSeek, GLM, OpenAI, Anthropic, Grok/xAI, not just Gemini+one paid
 provider), automatic Gemini model fallback with live progress shown on the
 floating button, a deterministic scoring rubric (see
 [AI workflow](#ai-workflow) below — this replaced an earlier freeform-score
-approach after it proved inconsistent run-to-run), salary/location/work-mode
-extraction with BDT conversion, a one-click extension-download flow with
+approach after it proved inconsistent run-to-run), salary/location/work-mode/
+experience-required/benefits extraction with BDT conversion, a one-click
+extension-download flow with
 update checks, session history with per-job status tracking, extraction that
 hydrates lazy-loaded/"see more"-gated descriptions and strips page chrome
 automatically (no manual scrolling required before clicking Analyze), a

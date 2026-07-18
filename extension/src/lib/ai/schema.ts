@@ -15,9 +15,15 @@ const salaryInfoSchema = z
 const jobDetailsSchema = z.object({
   company: z.string().nullable(),
   employmentType: z.string().nullable(),
+  // `.catch` keeps the two newer fields from ever failing the whole analysis:
+  // a prompt-only model that omits them, or emits the wrong type, degrades to
+  // "not stated" (null / []) instead of throwing an AiResponseFormatError that
+  // would burn a fallback attempt.
+  experienceRequired: z.string().nullable().catch(null),
   location: z.string().nullable(),
   workMode: z.string().nullable(),
   salary: salaryInfoSchema,
+  benefits: z.array(z.string()).catch([]),
 });
 
 export const matchAnalysisSchema = z.object({
@@ -102,11 +108,21 @@ const jobDetailsJsonSchema = {
   properties: {
     company: { type: "string", nullable: true },
     employmentType: { type: "string", nullable: true },
+    experienceRequired: { type: "string", nullable: true },
     location: { type: "string", nullable: true },
     workMode: { type: "string", nullable: true },
     salary: salaryInfoJsonSchema,
+    benefits: { type: "array", items: { type: "string" } },
   },
-  required: ["company", "employmentType", "location", "workMode", "salary"],
+  required: [
+    "company",
+    "employmentType",
+    "experienceRequired",
+    "location",
+    "workMode",
+    "salary",
+    "benefits",
+  ],
 } as const;
 
 export const matchAnalysisJsonSchema = {

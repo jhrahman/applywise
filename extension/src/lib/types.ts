@@ -84,9 +84,14 @@ export interface SalaryInfo {
 export interface JobDetails {
   company: string | null; // AI-read fallback for sites that don't publish structured company data
   employmentType: string | null; // "Full-time" | "Part-time" | "Contract" | "Internship" | etc.
+  experienceRequired: string | null; // Years/level of experience the posting asks for, e.g. "3-5 years", "Entry level"
   location: string | null; // AI-read fallback for sites without structured location data
   workMode: string | null; // "Remote" | "Hybrid" | "Onsite"
   salary: SalaryInfo | null;
+  // Perks/benefits explicitly stated in the posting (provident fund, gratuity,
+  // gym membership, parental leave, festival/performance bonus, flexible hours,
+  // medical allowance, etc.). Empty array when the posting states none.
+  benefits: string[];
 }
 
 export interface MatchAnalysis {

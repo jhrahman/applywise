@@ -70,7 +70,8 @@ The same applies to atsNotes: fast models pad that list with reassurance ("uses 
 - resume is clean on every check → return an empty array. That is the correct answer, not a failure.
 And in suggestions, fast models slip into telling the candidate to list skills they do not have — "add Terraform and Kafka to your skills section" when the resume never mentions either. That is instructing them to lie; RULE 0 below forbids it without exception. Worked examples of correct suggestion judgment:
 - posting wants Terraform, resume never mentions it → "If you provisioned any of that AWS infrastructure with Terraform or CloudFormation, say so on the Nexora bullet" (conditional), NOT "add Terraform to your skills".
-- posting wants Kubernetes, resume already says "Docker + K8s" → the wording fix is an ATS note; a suggestion here would be redundant, so write none.`;
+- posting wants Kubernetes, resume already says "Docker + K8s" → the wording fix is an ATS note; a suggestion here would be redundant, so write none.
+Finally, do not skim the jobDetails either — fast models tend to leave experienceRequired and benefits null/empty even when the posting states them. Scan the whole posting (overview boxes, bullet lists, "Requirements"/"What we offer"/"Perks" sections, and any table) before you decide a field is absent. If the text says "3+ years of experience", experienceRequired must not be null. If it lists "provident fund, gratuity, 2 festival bonuses, flexible hours", benefits must contain all of them, not an empty array. Only use null / [] when you have actually looked and the posting truly says nothing.`;
 
 // atsNotes and suggestions are the two fields a user can actually act on, and
 // both degrade into filler without an explicit method. Left unguided, models
@@ -150,6 +151,13 @@ Return a JSON object with exactly these fields:
 - jobDetails: object with these fields, read directly from the job posting text (not inferred or guessed) — use null for anything not explicitly stated:
   - company: string or null, the hiring company's name as stated in the posting (e.g. in an "About the job" overview box, header, or "Company Name:" line) — use this even if a separate Company field above was already provided, since the posting text is often more reliable than page metadata
   - employmentType: string or null, e.g. "Full-time", "Part-time", "Contract", "Internship", "Temporary"
+  - experienceRequired: string or null, the amount or level of work experience the posting explicitly
+    asks for. Read it from phrasing like "3-5 years of experience", "minimum 2 years", "at least 5+
+    years", "fresh graduates welcome", "entry level", "senior", "10+ years". Keep it short and as the
+    posting frames it (e.g. "3-5 years", "Minimum 2 years", "5+ years (Senior)", "Entry level / fresh
+    graduate"). If the posting gives a number of years, always include the number. Use null only when
+    the posting states no experience requirement at all — do not infer one from the seniority of the
+    title alone.
   - location: string or null, the job's city/region/country as stated anywhere in the posting. The
     posting may be in any language or script — read it in its original language and respond with an
     English-readable form (transliterate or translate the place name if needed, e.g. "東京" → "Tokyo,
@@ -161,6 +169,15 @@ Return a JSON object with exactly these fields:
     - maxAmount: number or null, the upper bound as a plain number (if only one figure is given, set both min and max to it)
     - currency: string or null, the ISO 4217 3-letter currency code (e.g. "USD", "BDT", "EUR", "GBP", "INR") inferred from the symbol/context
     - period: string or null, one of "year", "month", "hour", "day", "project" based on how the figure is expressed
+  - benefits: string[], every perk or benefit the posting explicitly states. Include things like
+    provident fund, gratuity, gym/health-club membership, paternity leave, maternity/parental leave,
+    weekends off (e.g. "2-day weekend"), festival bonus, performance bonus, profit share, stock/equity,
+    flexible/remote hours, medical or health insurance, medical/transport/mobile/lunch allowance, paid
+    time off, learning/training budget, relocation support, and anything else the posting clearly
+    frames as a benefit to the employee. Write each as a short human-readable label (e.g. "Provident
+    fund", "Gym membership", "2 festival bonuses", "Flexible hours", "Medical allowance"), Title Case,
+    de-duplicated. Only include benefits actually stated in the posting — never invent standard perks.
+    Return an empty array if the posting mentions none.
 
 Respond with only the JSON object, no other text.`;
 }

@@ -12,6 +12,18 @@ dist
 dist-ssr
 *.local
 
+# TypeScript incremental build cache — tsconfig.app.json / tsconfig.node.json
+# are composite, so `tsc -b` writes *.tsbuildinfo here. Machine-local, never
+# committed. (extension/.gitignore already covers its own copy.)
+*.tsbuildinfo
+
+# Local environment / secret files. Applywise keeps API keys in the browser,
+# never in env vars (see README), so none of these should ever exist — but
+# ignore them defensively so a stray one can't be committed by accident.
+.env
+.env.*
+!.env.example
+
 # Generated at build time by scripts/package-extension.mjs — always rebuilt
 # fresh, never hand-edited.
 public/applywise-extension.zip

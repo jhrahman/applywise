@@ -63,6 +63,41 @@ check(
   "no requirement met, experience below => 15 (preferred list empty counts as covered)"
 );
 
+// --- jobDetails: new experienceRequired / benefits fields are resilient -----
+// A prompt-only model that omits them (the `shell` above has neither) must
+// still parse — `.catch` degrades them to "not stated" rather than throwing an
+// AiResponseFormatError that would burn a fallback attempt.
+{
+  const parsed = parseMatchAnalysis({
+    ...shell,
+    requirementAnalysis: reqs("required", "found"),
+    experienceFit: 1,
+  });
+  check(parsed.jobDetails.experienceRequired === null, "missing experienceRequired defaults to null");
+  check(Array.isArray(parsed.jobDetails.benefits) && parsed.jobDetails.benefits.length === 0, "missing benefits defaults to []");
+}
+{
+  const parsed = parseMatchAnalysis({
+    ...shell,
+    jobDetails: { ...shell.jobDetails, experienceRequired: "3-5 years", benefits: ["Provident fund", "Gym membership"] },
+    requirementAnalysis: reqs("required", "found"),
+    experienceFit: 1,
+  });
+  check(parsed.jobDetails.experienceRequired === "3-5 years", "experienceRequired passes through when stated");
+  check(parsed.jobDetails.benefits.join(",") === "Provident fund,Gym membership", "benefits pass through when stated");
+}
+{
+  // A wrong-typed benefits value (model emitted a string, not an array) must
+  // not fail the whole analysis — it degrades to [].
+  const parsed = parseMatchAnalysis({
+    ...shell,
+    jobDetails: { ...shell.jobDetails, benefits: "Provident fund, Gym" },
+    requirementAnalysis: reqs("required", "found"),
+    experienceFit: 1,
+  });
+  check(Array.isArray(parsed.jobDetails.benefits) && parsed.jobDetails.benefits.length === 0, "wrong-typed benefits degrades to [] instead of throwing");
+}
+
 // --- casing/padding must not change the score ------------------------------
 // A model writing "Found" instead of "found" used to hit `.catch("missing")`,
 // inverting every verdict and dropping a perfect candidate from 100 to 25 —

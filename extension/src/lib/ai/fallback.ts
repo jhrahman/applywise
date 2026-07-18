@@ -60,8 +60,20 @@ export function providerSupportsFallback(provider: AiProvider): boolean {
   return provider in FALLBACK_MODELS;
 }
 
+// Model IDs that self-identify as a fast/lightweight tier. This catches the
+// case the static lists above can't: a user who picks a flash-lite (or other
+// small) model directly as their main model — via the model dropdown or the
+// custom-model-ID field — instead of only reaching one through the fallback
+// chain. Those models skim the same way, so they need the same anti-skim
+// prompt and longer timeout. Deliberately conservative substrings so a
+// full-reasoning model ("gemini-flash-latest", "gemini-3.5-flash") never
+// matches.
+const LITE_MODEL_PATTERN =
+  /flash-?lite|(?:^|[-/])lite(?:$|[-:])|(?:^|[-/])mini(?:$|[-:])|(?:^|[-/])nano(?:$|[-:])|-a4b|gpt-oss-20b/i;
+
 export function isLiteModel(provider: AiProvider, model: string): boolean {
-  return FALLBACK_MODELS[provider]?.lite.includes(model) ?? false;
+  if (FALLBACK_MODELS[provider]?.lite.includes(model)) return true;
+  return LITE_MODEL_PATTERN.test(model);
 }
 
 /**
