@@ -375,6 +375,39 @@ export function computeMatchScore(
   return Math.min(100, Math.max(0, Math.round(score)));
 }
 
+// The skill chips (matchingSkills/missingSkills/missingKeywords) are meant to be
+// short labels — "API Testing", "JMeter" — and the prompt says so explicitly.
+// Weaker and prompt-only models ignore it and dump the requirementAnalysis
+// wholesale into these arrays instead: verified live, Cohere's command-r7b
+// emitted 55 entries and Mistral small 40-61, including whole requirement
+// sentences ("At least 3 years of experience in a software company") and even
+// non-skills ("Only Male", "Age 24 to 36 years"). Rendered as chips that is
+// pure noise, and it differs wildly model-to-model. This trims each list back
+// to what the field is for — dropping sentence-length entries (a real skill
+// label is a handful of words at most), de-duplicating case-insensitively, and
+// capping the count. It's a no-op for the well-behaved models, which already
+// return a short, clean list.
+const MAX_SKILL_WORDS = 6;
+const MAX_SKILL_LIST = 20;
+function sanitizeSkillList(list: string[]): string[] {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const raw of list) {
+    const s = raw.trim();
+    if (!s) continue;
+    // A short label, not a copied requirement sentence. Counting words rather
+    // than characters so a genuinely multi-word skill ("Page Object Model",
+    // "REST API testing") survives while a full sentence does not.
+    if (s.split(/\s+/).length > MAX_SKILL_WORDS) continue;
+    const key = s.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(s);
+    if (out.length >= MAX_SKILL_LIST) break;
+  }
+  return out;
+}
+
 /**
  * Parses a match-analysis response and replaces the model's self-reported
  * matchScore with one computed from its own requirement verdicts. Use this
@@ -390,7 +423,15 @@ export function parseMatchAnalysis(raw: unknown): MatchAnalysis {
       `Couldn't parse the AI response: ${describeZodIssues(parsed.error)}`
     );
   }
-  const analysis = parsed.data;
+  // Trim the skill-chip arrays back to short labels no matter which model
+  // produced them (see sanitizeSkillList) — this is the one place every
+  // provider boundary funnels through.
+  const analysis: MatchAnalysis = {
+    ...parsed.data,
+    matchingSkills: sanitizeSkillList(parsed.data.matchingSkills),
+    missingSkills: sanitizeSkillList(parsed.data.missingSkills),
+    missingKeywords: sanitizeSkillList(parsed.data.missingKeywords),
+  };
   const scratchpad = scratchpadSchema.safeParse(raw);
 
   // No usable scratchpad (a model ignored the field, or returned it empty) —

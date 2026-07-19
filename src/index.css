@@ -51,6 +51,17 @@
   --status-warn-text: #fcd34d;
   --status-warn-bg: rgba(251, 191, 36, 0.12);
   --status-warn-border: rgba(251, 191, 36, 0.35);
+
+  /* In-prose highlight for the load-bearing skill/keyword terms inside the ATS
+     notes and suggestions (see HighlightedNote in pages/Results.tsx). Split out
+     as its own per-theme token — same rationale as the status tones — because a
+     single accent-tint at low opacity that reads fine on the light surface all
+     but disappears on this dark charcoal. Dark gets a stronger amber wash AND
+     bright amber text so the marked term genuinely jumps out of the paragraph;
+     the ring adds a crisp edge without a heavy solid-block "marker" look. */
+  --highlight-bg: rgba(245, 166, 35, 0.24);
+  --highlight-text: #f8c479;
+  --highlight-ring: rgba(245, 166, 35, 0.4);
 }
 
 :root[data-theme="light"] {
@@ -72,6 +83,12 @@
   --status-warn-text: #92400e;
   --status-warn-bg: rgba(245, 158, 11, 0.12);
   --status-warn-border: rgba(245, 158, 11, 0.35);
+
+  /* Light theme was already legible, so keep the dark charcoal body text and
+     just firm up the amber wash a touch for a consistent "marked" feel. */
+  --highlight-bg: rgba(245, 166, 35, 0.28);
+  --highlight-text: var(--color-light-text);
+  --highlight-ring: rgba(233, 121, 26, 0.35);
 }
 
 @media (prefers-color-scheme: light) {
@@ -94,6 +111,10 @@
     --status-warn-text: #92400e;
     --status-warn-bg: rgba(245, 158, 11, 0.12);
     --status-warn-border: rgba(245, 158, 11, 0.35);
+
+    --highlight-bg: rgba(245, 166, 35, 0.28);
+    --highlight-text: var(--color-light-text);
+    --highlight-ring: rgba(233, 121, 26, 0.35);
   }
 }
 

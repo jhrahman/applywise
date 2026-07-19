@@ -204,6 +204,48 @@ check(
   "a scratchpad without roleAlignment still scores as before (defaults to 1)"
 );
 
+// --- skill-chip lists are trimmed to short labels --------------------------
+// Weak/prompt-only models dump the whole requirementAnalysis into the skill
+// arrays (verified live: Cohere command-r7b returned 55, Mistral small 40-61),
+// including full requirement sentences and non-skills. sanitizeSkillList must
+// drop sentence-length entries, de-dupe case-insensitively, and cap the count —
+// while leaving a clean short list from a well-behaved model untouched.
+{
+  const dumped = parseMatchAnalysis({
+    ...shell,
+    matchingSkills: [
+      "API Testing",
+      "api testing", // case-insensitive duplicate
+      "Manual Testing",
+      "At least 3 years of experience in a software company", // requirement sentence, not a skill
+      "Strong understanding of software QA concepts, SDLC/STLC, and testing methodologies",
+    ],
+    missingSkills: Array.from({ length: 40 }, (_, i) => `Skill ${i}`), // over the cap
+    requirementAnalysis: reqs("required", "found"),
+    experienceFit: 1,
+  });
+  check(
+    dumped.matchingSkills.join("|") === "API Testing|Manual Testing",
+    `sentence-length entries and case-dupes are dropped from skill chips (got ${JSON.stringify(dumped.matchingSkills)})`
+  );
+  check(
+    dumped.missingSkills.length === 20,
+    `an oversized skill list is capped (got ${dumped.missingSkills.length}, want 20)`
+  );
+}
+{
+  // A clean, short list from a good model passes through unchanged.
+  const clean = ["API Testing", "JMeter", "Manual Testing", "Page Object Model", "REST API testing"];
+  const parsed = parseMatchAnalysis({
+    ...shell, matchingSkills: [...clean],
+    requirementAnalysis: reqs("required", "found"), experienceFit: 1,
+  });
+  check(
+    parsed.matchingSkills.join("|") === clean.join("|"),
+    "a clean short skill list (incl. legit multi-word labels) is left untouched"
+  );
+}
+
 // --- response envelope ------------------------------------------------------
 // Asking for JSON doesn't reliably get only JSON: the prompt-only models
 // (DeepSeek/GLM/xAI and the OpenRouter free models without structured output)

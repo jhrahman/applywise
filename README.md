@@ -216,14 +216,24 @@ tested as part of this project — treat it as a starting point.
   preferred skill coverage + experience fit, weighted and combined by a fixed
   formula) rather than a freeform "impression" score, so re-analyzing the
   same resume against the same posting lands close to the same score instead
-  of swinging wildly between runs. ATS notes and suggestions are justified
-  and highlight the specific skills/keywords they're about, instead of
-  reading as an undifferentiated block of text. The prompt explicitly forbids
-  naming any skill or technology that isn't actually present in your resume
-  or the posting, so fast/lite models can't invent a finding (e.g. claiming
-  a term appears in your resume when it doesn't) — a real defect a small
-  model can otherwise fall into by copying an illustrative example instead of
-  reasoning about your actual documents.
+  of swinging wildly between runs. The result leads with a qualitative
+  Strong/Partial/Needs work verdict rather than the raw number — verified
+  live across providers, different AI models can land on a somewhat different
+  exact score for the same resume/posting pair (they judge borderline
+  requirement coverage a little differently), but the verdict band stays
+  consistent, so that's the number worth trusting at a glance. Skill matching
+  is meaning-based, not string-based: the same technology written differently
+  between your resume and the posting (an acronym vs. its spelled-out form, a
+  different capitalization) still counts as a match, with the wording
+  difference itself flagged as an ATS note since a real ATS keyword filter
+  does match literally. ATS notes and suggestions are justified and highlight
+  the specific skills/keywords they're about, instead of reading as an
+  undifferentiated block of text. The prompt explicitly forbids naming any
+  skill or technology that isn't actually present in your resume or the
+  posting, so fast/lite models can't invent a finding (e.g. claiming a term
+  appears in your resume when it doesn't) — a real defect a small model can
+  otherwise fall into by copying an illustrative example instead of reasoning
+  about your actual documents.
 - **Robust job posting extraction, no scrolling or clicking required** — the
   title, company, location, and full description are read from the page with
   several safeguards: before reading, the extension hydrates any lazily-

@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Applywise — AI Job Match Copilot",
-  "version": "0.20.0",
+  "version": "0.21.0",
   "description": "Match your resume against any job posting, spot missing skills, and get ATS notes — computed entirely in your browser.",
   "icons": {
     "16": "icons/icon-16.png",

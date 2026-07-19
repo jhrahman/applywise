@@ -84,7 +84,13 @@ export const FALLBACK_MODELS: Partial<Record<AiProvider, ModelTiers>> = {
   // hiccup, not the shared cap (surfaced in the rate-limit hint).
   cohere: {
     preferred: ["command-a-03-2025", "command-r-plus-08-2024"],
-    lite: ["command-r-08-2024", "command-r7b-12-2024"],
+    // command-r7b-12-2024 was dropped (2026-07): verified live it's below the
+    // floor this tool needs — it returned zero atsNotes and zero suggestions on
+    // every run, dumped 55-68 raw resume skills into matchingSkills, and its
+    // score stuck at a default-looking 50, so when the chain reached it the user
+    // got near-garbage rather than a degraded-but-useful analysis. command-r is
+    // the last-resort lite model now.
+    lite: ["command-r-08-2024"],
   },
   // Hugging Face's Inference Providers router. Unlike the other entries here,
   // this isn't a generous ongoing free tier — a free HF account gets $0.10 of
