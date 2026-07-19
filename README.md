@@ -20,19 +20,12 @@ This repo has two parts that work together:
 
 ## Demo
 
-https://github.com/user-attachments/assets/PLACEHOLDER-replace-after-first-push
 
-A full walkthrough — installing the extension, saving a resume and API key,
-analyzing a real LinkedIn posting, and reviewing the match score, ATS notes,
-and interview questions.
+https://github.com/user-attachments/assets/2e807ecf-c2db-407e-872d-32397d477964
 
-> **Note:** GitHub only renders an inline video player for files uploaded
-> through its own web UI (drag-and-drop into a README/PR/issue edit box),
-> which is why the link above is a placeholder. After pushing this commit,
-> edit `README.md` directly on GitHub, delete the placeholder line, and
-> drag in `docs/demo.mp4` — GitHub will upload it and rewrite that line
-> into a working embed automatically. The file is already in the repo at
-> `docs/demo.mp4` so it isn't lost if you skip this step.
+
+A complete walkthrough of how Applywise works.
+
 
 ## Contents
 
