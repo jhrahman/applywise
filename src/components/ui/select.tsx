@@ -1,5 +1,5 @@
 import * as React from "react";
-import { Check, ChevronDown } from "lucide-react";
+import { AlertTriangle, Check, ChevronDown } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 // A custom listbox rather than a native <select>: native <option> elements
@@ -13,6 +13,14 @@ interface ParsedOption {
   value: string;
   label: string;
   disabled?: boolean;
+  /**
+   * A short status pill shown after the label (e.g. a model's "going away"
+   * date). Passed from the call site as `data-badge` / `data-badge-tone` on the
+   * <option> — kept out of the label string so it can be styled as a coloured
+   * block rather than reading as more grey label text.
+   */
+  badge?: string;
+  badgeTone?: "bad" | "warn";
 }
 interface ParsedGroup {
   label: string;
@@ -27,12 +35,35 @@ function labelFromChildren(children: React.ReactNode): string {
 }
 
 function parseOption(el: React.ReactElement): ParsedOption {
-  const props = el.props as React.OptionHTMLAttributes<HTMLOptionElement>;
+  const props = el.props as React.OptionHTMLAttributes<HTMLOptionElement> & Record<string, unknown>;
+  const badge = typeof props["data-badge"] === "string" ? (props["data-badge"] as string) : undefined;
+  const rawTone = props["data-badge-tone"];
   return {
     value: String(props.value ?? ""),
     label: labelFromChildren(props.children),
     disabled: props.disabled,
+    badge,
+    badgeTone: rawTone === "warn" ? "warn" : "bad",
   };
+}
+
+/** The coloured status pill. Both tones read from the theme-tuned status tokens
+ * (see index.css) so they stay legible in light and dark; "bad" is the light-red
+ * block used for a model that's going away. */
+function OptionBadge({ text, tone }: { text: string; tone?: "bad" | "warn" }) {
+  const isWarn = tone === "warn";
+  return (
+    <span
+      className="inline-flex shrink-0 items-center gap-1 rounded-full px-1.5 py-0.5 text-[10px] font-semibold leading-none"
+      style={{
+        color: isWarn ? "var(--status-warn-text)" : "var(--status-bad-text)",
+        backgroundColor: isWarn ? "var(--status-warn-bg)" : "var(--status-bad-bg)",
+      }}
+    >
+      <AlertTriangle size={9} className="shrink-0" />
+      {text}
+    </span>
+  );
 }
 
 function parseChildren(children: React.ReactNode): ParsedItem[] {
@@ -210,7 +241,10 @@ export const Select = React.forwardRef<HTMLButtonElement, SelectProps>(
             isSelected && "text-accent-1"
           )}
         >
-          <span className={cn(isSelected && "font-semibold")}>{opt.label}</span>
+          <span className="flex min-w-0 flex-wrap items-center gap-1.5">
+            <span className={cn(isSelected && "font-semibold")}>{opt.label}</span>
+            {opt.badge && <OptionBadge text={opt.badge} tone={opt.badgeTone} />}
+          </span>
           {isSelected && <Check size={14} className="mt-0.5 shrink-0 text-accent-1" />}
         </div>
       );
@@ -239,7 +273,10 @@ export const Select = React.forwardRef<HTMLButtonElement, SelectProps>(
             className
           )}
         >
-          <span className="truncate">{selected?.label ?? currentValueStr}</span>
+          <span className="flex min-w-0 items-center gap-1.5">
+            <span className="truncate">{selected?.label ?? currentValueStr}</span>
+            {selected?.badge && <OptionBadge text={selected.badge} tone={selected.badgeTone} />}
+          </span>
           <ChevronDown
             size={15}
             className={cn(

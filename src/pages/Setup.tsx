@@ -417,14 +417,16 @@ function ModelPicker({
   // <select> can display it as the current value.
   const isOrphanCustom = model.length > 0 && !presetValues.has(model) && !customModels.includes(model);
 
-  // Two independent warnings a model can carry: gone already (not in the
-  // live list at all) or still live today but scheduled to disappear (the
-  // provider publishes a retirement date — currently only OpenRouter does).
-  // The first is strictly worse, so it wins when a model somehow has both.
-  const statusMarker = (value: string) => {
-    if (isModelLive(value, liveModels) === false) return " · ⚠ not in live list";
+  // Two independent warnings a model can carry: gone already (not in the live
+  // list at all) or still live today but scheduled to disappear (the provider
+  // publishes a retirement date). Returned as a coloured pill the Select
+  // renders after the label (see OptionBadge) rather than appended label text.
+  // "going away" is the light-red ("bad") block; an already-gone model stays
+  // amber ("warn"). The first is strictly worse, so it wins if both apply.
+  const modelBadge = (value: string): { badge: string; tone: "bad" | "warn" } | null => {
+    if (isModelLive(value, liveModels) === false) return { badge: "not in live list", tone: "warn" };
     const expiresAt = getModelExpiry(value, liveModels);
-    return expiresAt ? ` · ⚠ going away ${formatExpiryDate(expiresAt)}` : "";
+    return expiresAt ? { badge: `going away ${formatExpiryDate(expiresAt)}`, tone: "bad" } : null;
   };
 
   function commitAdd() {
@@ -448,26 +450,35 @@ function ModelPicker({
           onSelect(e.target.value);
         }}
       >
-        {presets.map((m) => (
-          <option key={m.value} value={m.value}>
-            {m.label}
-            {statusMarker(m.value)}
-          </option>
-        ))}
+        {presets.map((m) => {
+          const b = modelBadge(m.value);
+          return (
+            <option key={m.value} value={m.value} data-badge={b?.badge} data-badge-tone={b?.tone}>
+              {m.label}
+            </option>
+          );
+        })}
         {customModels.length > 0 && (
           <optgroup label="Your custom models">
-            {customModels.map((c) => (
-              <option key={c} value={c}>
-                {c} (custom){statusMarker(c)}
-              </option>
-            ))}
+            {customModels.map((c) => {
+              const b = modelBadge(c);
+              return (
+                <option key={c} value={c} data-badge={b?.badge} data-badge-tone={b?.tone}>
+                  {c} (custom)
+                </option>
+              );
+            })}
           </optgroup>
         )}
-        {isOrphanCustom && (
-          <option value={model}>
-            {model} (custom){statusMarker(model)}
-          </option>
-        )}
+        {isOrphanCustom &&
+          (() => {
+            const b = modelBadge(model);
+            return (
+              <option value={model} data-badge={b?.badge} data-badge-tone={b?.tone}>
+                {model} (custom)
+              </option>
+            );
+          })()}
         <option value={ADD_CUSTOM_SENTINEL}>＋ Add a custom model…</option>
       </Select>
 
@@ -622,7 +633,7 @@ function ModelCheckStatus({
     return (
       <p
         className="flex items-start gap-1.5 rounded-lg px-2.5 py-2 text-xs font-medium"
-        style={{ color: "var(--status-warn-text)", backgroundColor: "var(--status-warn-bg)" }}
+        style={{ color: "var(--status-bad-text)", backgroundColor: "var(--status-bad-bg)" }}
       >
         <AlertTriangle size={13} className="mt-0.5 shrink-0" />
         <span>

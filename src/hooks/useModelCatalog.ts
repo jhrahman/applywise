@@ -175,19 +175,22 @@ export function useModelCatalog(
   };
 }
 
-/** Matches leniently around the `:free` suffix, which some catalogs
- * (OpenRouter) include and some of our IDs carry — so a suffix mismatch never
- * mislabels a working model as gone. Shared by isModelLive and getModelExpiry
- * so both use exactly the same match rule. */
+/** Finds the catalogue entry for a model, preferring an EXACT id match and only
+ * then falling back to a lenient `:free`-suffix-insensitive match. The exact
+ * pass matters when a provider lists both a model and its free twin: OpenRouter
+ * carries both `tencent/hy3` (paid, no retirement date) and `tencent/hy3:free`
+ * (with one) — a lenient-only match returned whichever came first in the list,
+ * which was the paid entry, so the "going away" date on the `:free` model the
+ * user actually selected never showed. The lenient fallback still covers the
+ * case where a catalogue lists only one variant and our stored ID carries the
+ * other suffix, so a suffix mismatch never mislabels a working model as gone.
+ * Shared by isModelLive and getModelExpiry so both use exactly the same rule. */
 function findLiveModel(modelId: string, liveModels: LiveModel[] | null): LiveModel | null {
   if (!liveModels) return null;
+  const exact = liveModels.find((m) => m.id === modelId);
+  if (exact) return exact;
   const bare = modelId.replace(/:free$/, "");
-  return (
-    liveModels.find((m) => {
-      const mBare = m.id.replace(/:free$/, "");
-      return m.id === modelId || mBare === bare;
-    }) ?? null
-  );
+  return liveModels.find((m) => m.id.replace(/:free$/, "") === bare) ?? null;
 }
 
 /**
