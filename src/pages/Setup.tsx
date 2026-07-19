@@ -378,6 +378,47 @@ function formatExpiryDate(iso: string): string {
   });
 }
 
+/** Pulls a human message out of a provider's JSON error body via a plain regex
+ * rather than JSON.parse — list-models.ts (extension side) truncates the body
+ * to 150 chars before it ever reaches here, which routinely cuts the JSON off
+ * mid-object (verified live: Gemini's ~450-char error body) and would make a
+ * real parse throw. The message/detail field itself is almost always near the
+ * front of the body and still intact even when the object never closes, so
+ * matching the field directly survives truncation that a full parse can't.
+ * Covers every shape seen live: Cerebras/Groq/OpenAI's "message", Gemini's
+ * nested error.message (same key, regex doesn't care about nesting), and
+ * Mistral's "detail". */
+function extractProviderErrorMessage(raw: string): string | null {
+  for (const re of [/"message"\s*:\s*"((?:[^"\\]|\\.)*)"/, /"detail"\s*:\s*"((?:[^"\\]|\\.)*)"/]) {
+    const match = raw.match(re);
+    if (match) return match[1].replace(/\\"/g, '"').replace(/\\n/g, " ").trim();
+  }
+  return null;
+}
+
+/**
+ * Turns list-models.ts's raw "<provider> model list unavailable (HTTP 401):
+ * {...full JSON body...}" string into a short, human status line — e.g.
+ * "Wrong API Key (HTTP 401)" instead of dumping the provider's JSON verbatim.
+ * Every other error message this component receives (extension-not-installed,
+ * bridge timeout, "model list came back empty") is already a clean sentence
+ * with no "(HTTP ###)" substring, so it passes through unchanged — this only
+ * ever rewrites the one shape it recognizes.
+ */
+function formatModelCheckError(raw: string): string {
+  const statusMatch = raw.match(/HTTP (\d{3})/);
+  if (!statusMatch) return raw;
+  const status = statusMatch[1];
+
+  const providerMessage = extractProviderErrorMessage(raw);
+  if (!providerMessage) return `Provider returned an error (HTTP ${status}).`;
+
+  // Keep only the first sentence — some providers (OpenAI) tack on a long
+  // "find your key at <url>" sentence that turns one line into a paragraph.
+  const firstSentence = providerMessage.split(/(?<=[.!?])\s/)[0];
+  return `${firstSentence} (HTTP ${status})`;
+}
+
 /**
  * Model dropdown with (1) multiple custom model IDs per provider and (2) a
  * real-time availability check: each provider's live /models list is fetched
@@ -606,7 +647,7 @@ function ModelCheckStatus({
   if (error) {
     return (
       <p className="text-xs text-[var(--fg-dim)]">
-        Couldn't verify models against {providerLabel} right now — {error}
+        Couldn't verify models against {providerLabel} right now — {formatModelCheckError(error)}
       </p>
     );
   }
