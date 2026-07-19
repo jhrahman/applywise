@@ -1,14 +1,20 @@
 {
   "entries": [
     {
+      "version": "0.22.0",
+      "changes": [
+        "The model availability check on the Setup page now flags a model that's still working today but scheduled to be retired soon (OpenRouter and Mistral both publish a retirement date) as \"going away\", not just ones that are already gone — so you can switch before it breaks",
+        "Fixed the Setup page going blank when the deployed web app was newer than your installed extension — the page now tolerates an older extension's responses instead of crashing"
+      ]
+    },
+    {
       "version": "0.21.0",
       "changes": [
         "Match score now leads with a Strong/Partial/Needs work verdict instead of the raw number — verified live to stay consistent across AI providers even when the exact score differs a little between models",
         "Fixed AI providers marking a skill as missing just because the resume and posting wrote it differently (e.g. JMeter vs Jmeter, SQA vs Software QA) — now recognized as a match, with the wording difference flagged as its own ATS note",
         "Fixed matching/missing skill chips occasionally filling up with whole requirement sentences instead of short skill names (mostly on Mistral and Cohere)",
         "Removed Cohere's smallest fallback model, which could return an empty analysis (no ATS notes or suggestions) instead of a useful one",
-        "Fixed the highlighted keywords in ATS notes and suggestions being hard to see in dark mode",
-        "The model availability check on the Setup page now also flags a model that's still working today but scheduled to be retired soon (OpenRouter and Mistral both publish a retirement date), not just ones that are already gone"
+        "Fixed the highlighted keywords in ATS notes and suggestions being hard to see in dark mode"
       ]
     },
     {
