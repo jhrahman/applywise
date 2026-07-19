@@ -131,9 +131,12 @@ That's it. You're done with setup.
   saved key, cached ~1 hour) and flags any preset or custom model that's no
   longer offered — both inline in the dropdown ("⚠ not in live list") and as a
   note under it, so you find out a model was retired *before* an analysis fails
-  on a 404. Providers don't publish future expiry dates, so this catches
-  retirement the moment a model drops from their catalogue rather than
-  predicting a date. Needs the extension installed and a saved key.
+  on a 404. Most providers only reveal retirement the moment a model actually
+  drops from their catalogue, but OpenRouter and Mistral both publish an
+  upcoming retirement date per model — when your selected model has one, it's
+  flagged as "⚠ going away &lt;date&gt;" (in the dropdown and the status line)
+  while it's still working today, so you can switch before it actually breaks
+  instead of after. Needs the extension installed and a saved key.
 - **Auto-fallback to other free models**: a single toggle in the **AI provider**
   card. When it's on and your selected model times out or hits a rate limit /
   high-demand error, Applywise works down the free models — strongest first,
@@ -277,7 +280,9 @@ tested as part of this project — treat it as a starting point.
   and custom model against the provider's live `/models` catalogue (fetched via
   the extension with your saved key, cached ~1 hour) and flags retired ones in
   the dropdown and a status line, so a model that's been pulled is caught before
-  it 404s an analysis
+  it 404s an analysis. For OpenRouter and Mistral, which both publish an
+  upcoming retirement date per model, a still-working model due to go away soon
+  is flagged too ("⚠ going away &lt;date&gt;"), ahead of the actual cutoff
 - **Auto-fallback across free models, with live progress** — one toggle in the
   AI provider card; when on, timeouts, rate limits, high-demand errors, and
   responses that come back unusable all move the analysis to the next model

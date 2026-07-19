@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { bridgeListModels, isExtensionAvailable } from "@/lib/bridge";
+import { bridgeListModels, isExtensionAvailable, type LiveModel } from "@/lib/bridge";
 import { getItem, setItem, STORAGE_KEYS } from "@/lib/storage";
 import type { AiProvider } from "@/types";
 
@@ -11,13 +11,13 @@ const CATALOG_TTL_MS = 60 * 60 * 1000;
 
 interface CatalogEntry {
   fetchedAt: number;
-  models: string[];
+  models: LiveModel[];
 }
 type ModelCatalog = Partial<Record<AiProvider, CatalogEntry>>;
 
 export interface ModelCatalogState {
-  /** Live model IDs for the provider, or null when unknown (not yet checked / couldn't check). */
-  liveModels: string[] | null;
+  /** Live models for the provider, or null when unknown (not yet checked / couldn't check). */
+  liveModels: LiveModel[] | null;
   checkedAt: number | null;
   loading: boolean;
   /** Why the check couldn't run (no extension, bad key, provider without a usable /models endpoint). */
@@ -100,18 +100,38 @@ export function useModelCatalog(
   };
 }
 
+/** Matches leniently around the `:free` suffix, which some catalogs
+ * (OpenRouter) include and some of our IDs carry — so a suffix mismatch never
+ * mislabels a working model as gone. Shared by isModelLive and getModelExpiry
+ * so both use exactly the same match rule. */
+function findLiveModel(modelId: string, liveModels: LiveModel[] | null): LiveModel | null {
+  if (!liveModels) return null;
+  const bare = modelId.replace(/:free$/, "");
+  return (
+    liveModels.find((m) => {
+      const mBare = m.id.replace(/:free$/, "");
+      return m.id === modelId || mBare === bare;
+    }) ?? null
+  );
+}
+
 /**
  * Whether a model ID is present in the provider's live catalogue. Returns null
  * when the catalogue is unknown (so the UI shows nothing rather than a false
- * "retired"). Matches leniently around the `:free` suffix, which some catalogs
- * (OpenRouter) include and some of our IDs carry — so a suffix mismatch never
- * mislabels a working model as gone.
+ * "retired").
  */
-export function isModelLive(modelId: string, liveModels: string[] | null): boolean | null {
+export function isModelLive(modelId: string, liveModels: LiveModel[] | null): boolean | null {
   if (!liveModels) return null;
-  const bare = modelId.replace(/:free$/, "");
-  return liveModels.some((m) => {
-    const mBare = m.replace(/:free$/, "");
-    return m === modelId || mBare === bare;
-  });
+  return findLiveModel(modelId, liveModels) !== null;
+}
+
+/**
+ * The date (YYYY-MM-DD) this model is scheduled to stop being served, if the
+ * provider publishes one (currently only OpenRouter) — null otherwise, or if
+ * the catalogue is unknown. A model can be live today (isModelLive true) and
+ * still have a scheduled retirement date; the two are independent checks so
+ * the Setup page can show both "works right now" and "switch before <date>".
+ */
+export function getModelExpiry(modelId: string, liveModels: LiveModel[] | null): string | null {
+  return findLiveModel(modelId, liveModels)?.expiresAt ?? null;
 }

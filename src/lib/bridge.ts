@@ -5,6 +5,15 @@ import {
   type BridgeRequestMessage,
 } from "./bridge-protocol";
 
+// Mirrors extension/src/lib/ai/list-models.ts's LiveModel — kept in sync by
+// hand since the web app and the extension are separate build systems (same
+// arrangement as bridge-protocol.ts / version.ts).
+export interface LiveModel {
+  id: string;
+  /** ISO date (YYYY-MM-DD) the provider will stop serving this model, if it publishes one. */
+  expiresAt?: string;
+}
+
 const DEFAULT_TIMEOUT_MS = 1500;
 const NOT_INSTALLED_MESSAGE = "The Applywise extension isn't installed, or isn't running on this page.";
 
@@ -89,8 +98,8 @@ export async function bridgeGetExtensionVersion(): Promise<string> {
  * timeout since it's a real network round-trip through the provider, with an
  * honest message so a slow provider doesn't read as "extension missing".
  */
-export async function bridgeListModels(provider: string): Promise<string[]> {
-  return sendBridgeRequest<string[]>(
+export async function bridgeListModels(provider: string): Promise<LiveModel[]> {
+  return sendBridgeRequest<LiveModel[]>(
     { type: "LIST_MODELS", provider },
     20_000,
     "Checking the provider's model list is taking longer than usual — the provider may be slow to respond. You can keep using the models below in the meantime."
