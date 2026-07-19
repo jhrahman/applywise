@@ -1,5 +1,9 @@
 # Applywise — AI Job Match Copilot
 
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![GitHub release](https://img.shields.io/github/v/release/jhrahman/applywise)](https://github.com/jhrahman/applywise/releases)
+[![PRs welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](https://github.com/jhrahman/applywise/pulls)
+
 Upload your resume once, then click a button on any job posting to get a match
 score, missing skills, ATS notes, salary info (converted to BDT), and
 AI-generated interview questions — all computed in your own browser with your
@@ -13,6 +17,37 @@ This repo has two parts that work together:
 - **`/` (root)** — the web app (Setup + Results pages), a static React site
 - **`/extension`** — the Chrome/Edge/Brave/Firefox extension that scrapes job
   postings and talks to the AI provider
+
+## Demo
+
+https://github.com/user-attachments/assets/PLACEHOLDER-replace-after-first-push
+
+A full walkthrough — installing the extension, saving a resume and API key,
+analyzing a real LinkedIn posting, and reviewing the match score, ATS notes,
+and interview questions.
+
+> **Note:** GitHub only renders an inline video player for files uploaded
+> through its own web UI (drag-and-drop into a README/PR/issue edit box),
+> which is why the link above is a placeholder. After pushing this commit,
+> edit `README.md` directly on GitHub, delete the placeholder line, and
+> drag in `docs/demo.mp4` — GitHub will upload it and rewrite that line
+> into a working embed automatically. The file is already in the repo at
+> `docs/demo.mp4` so it isn't lost if you skip this step.
+
+## Contents
+
+- [Demo](#demo)
+- [Quick start](#quick-start)
+- [Day-to-day use](#day-to-day-use)
+- [Browser support](#browser-support)
+- [Features](#features)
+- [Deferred (not in this build)](#deferred-not-in-this-build)
+- [Tech stack](#tech-stack)
+- [Architecture](#architecture)
+- [Project structure](#project-structure)
+- [Local development](#local-development-running-from-source)
+- [Privacy & security notes](#privacy--security-notes)
+- [Troubleshooting](#troubleshooting)
 
 ---
 
@@ -324,6 +359,19 @@ tested as part of this project — treat it as a starting point.
 - Cross-device history sync (would need accounts + a backend — contradicts
   the "no server" design)
 - Automated test suite / CI
+
+---
+
+## Tech stack
+
+- **React 19** + **TypeScript** — both the web app and the extension's UI
+- **Vite** — web app dev server/build
+- **Tailwind CSS v4** — styling, with a dark/light theme via CSS variables
+- **react-router** (`HashRouter`) — Setup/Results page routing in the web app
+- **esbuild** — extension build (`extension/build.mjs`), separate from Vite
+- **Chrome Manifest V3** — extension platform, via a `browser.*`/`chrome.*`
+  compatibility shim for Firefox
+- **Zod** — runtime schema validation for AI provider responses
 
 ---
 
