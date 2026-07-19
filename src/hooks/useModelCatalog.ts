@@ -1,5 +1,10 @@
 import { useEffect, useState } from "react";
-import { bridgeListModels, isExtensionAvailable, type LiveModel } from "@/lib/bridge";
+import {
+  bridgeGetExtensionVersion,
+  bridgeListModels,
+  isExtensionAvailable,
+  type LiveModel,
+} from "@/lib/bridge";
 import { getItem, setItem, STORAGE_KEYS } from "@/lib/storage";
 import type { AiProvider } from "@/types";
 
@@ -11,6 +16,17 @@ const CATALOG_TTL_MS = 60 * 60 * 1000;
 
 interface CatalogEntry {
   fetchedAt: number;
+  /**
+   * The extension version that produced this entry. The model fetch (including
+   * whether it parses a per-model retirement date) runs entirely in the
+   * extension's background worker, so a cache written by an older extension is
+   * stale in a way the TTL alone can't detect — e.g. a user who updates to an
+   * extension that started returning `expiresAt` would keep seeing no "going
+   * away" flag for up to a full TTL, because the cached list still lacks it.
+   * Refetching whenever this differs from the currently-installed version makes
+   * an extension update take effect on the very next Setup visit instead.
+   */
+  extVersion?: string;
   models: LiveModel[];
 }
 type ModelCatalog = Partial<Record<AiProvider, CatalogEntry>>;
@@ -59,7 +75,11 @@ function normalizeCatalog(raw: ModelCatalog): ModelCatalog {
   const out: ModelCatalog = {};
   for (const [provider, entry] of Object.entries(raw) as [AiProvider, CatalogEntry | undefined][]) {
     if (!entry || typeof entry.fetchedAt !== "number") continue;
-    out[provider] = { fetchedAt: entry.fetchedAt, models: normalizeLiveModels(entry.models) };
+    out[provider] = {
+      fetchedAt: entry.fetchedAt,
+      extVersion: typeof entry.extVersion === "string" ? entry.extVersion : undefined,
+      models: normalizeLiveModels(entry.models),
+    };
   }
   return out;
 }
@@ -97,21 +117,36 @@ export function useModelCatalog(
     setError(null);
     if (!enabled) return;
 
-    const entry = catalog[provider];
-    if (entry && Date.now() - entry.fetchedAt < CATALOG_TTL_MS) return; // still fresh
-
     let cancelled = false;
-    setLoading(true);
     (async () => {
       try {
         if (!(await isExtensionAvailable())) {
           if (!cancelled) setError("Model availability check needs the browser extension installed.");
           return;
         }
+        // Read the installed extension version before deciding the cache is
+        // fresh: an entry from an older extension must be refetched even inside
+        // its TTL (see CatalogEntry.extVersion). A failed version probe degrades
+        // to undefined, which only matches an equally-unknown cached version, so
+        // the worst case is falling back to plain TTL freshness, never a hang.
+        const extVersion = await bridgeGetExtensionVersion().catch(() => undefined);
+        if (cancelled) return;
+
+        const entry = catalog[provider];
+        const fresh =
+          entry != null &&
+          Date.now() - entry.fetchedAt < CATALOG_TTL_MS &&
+          entry.extVersion === extVersion;
+        if (fresh) return; // cache still valid for this exact extension version
+
+        setLoading(true);
         const models = normalizeLiveModels(await bridgeListModels(provider));
         if (cancelled) return;
         setCatalog((prev) => {
-          const next: ModelCatalog = { ...prev, [provider]: { fetchedAt: Date.now(), models } };
+          const next: ModelCatalog = {
+            ...prev,
+            [provider]: { fetchedAt: Date.now(), extVersion, models },
+          };
           setItem(STORAGE_KEYS.modelCatalog, next);
           return next;
         });
