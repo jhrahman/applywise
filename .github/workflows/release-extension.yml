@@ -1,0 +1,66 @@
+name: Release extension
+
+# Publishes the extension zip as a GitHub Release asset whenever
+# extension/manifest.json's version changes on main. This is the only
+# free, backend-less way to get a real download count for the Setup
+# page's install button (GitHub exposes per-asset download counts on
+# its public REST API, no auth or server required).
+on:
+  push:
+    branches: [main]
+    paths:
+      - "extension/manifest.json"
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Read manifest version
+        id: manifest
+        run: |
+          version=$(node -p "require('./extension/manifest.json').version")
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+      - name: Skip if release already exists
+        id: check
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if gh release view "v${{ steps.manifest.outputs.version }}" >/dev/null 2>&1; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Build extension
+        if: steps.check.outputs.exists == 'false'
+        working-directory: extension
+        run: |
+          npm ci
+          npm run build
+
+      - name: Zip extension
+        if: steps.check.outputs.exists == 'false'
+        run: |
+          mkdir -p package/applywise-extension
+          cp -r extension/dist/. package/applywise-extension/
+          cd package
+          zip -r ../applywise-extension.zip applywise-extension
+
+      - name: Create release
+        if: steps.check.outputs.exists == 'false'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ steps.manifest.outputs.version }}
+          name: v${{ steps.manifest.outputs.version }}
+          files: applywise-extension.zip
+          generate_release_notes: true

@@ -30,7 +30,9 @@ import { cn } from "@/lib/utils";
 import { useExtensionVersion } from "@/hooks/useExtensionVersion";
 import { useModelCatalog, isModelLive } from "@/hooks/useModelCatalog";
 import { useChangelog } from "@/hooks/useChangelog";
+import { useDownloadCount } from "@/hooks/useDownloadCount";
 import { compareVersions } from "@/lib/version";
+import { extensionReleaseDownloadUrl } from "@/lib/githubRelease";
 import {
   FALLBACK_PROVIDERS,
   MODELS,
@@ -660,6 +662,25 @@ function FallbackToggle({
   );
 }
 
+/**
+ * Social proof next to the download CTA — GitHub's public release-asset API
+ * is the only free, backend-less source of a real download count for an
+ * extension that isn't on a web store (see src/lib/githubRelease.ts). Stays
+ * quiet (renders nothing) until a number is actually known, rather than
+ * showing a loading placeholder for a background stat nobody's waiting on.
+ */
+function DownloadCountBadge() {
+  const count = useDownloadCount();
+  if (count === null || count <= 0) return null;
+
+  return (
+    <span className="inline-flex items-center gap-1.5 rounded-full border border-[var(--border)] px-2.5 py-1 text-xs font-semibold tabular-nums text-[var(--fg-dim)]">
+      <Download size={12} className="shrink-0 text-accent-1" />
+      {count.toLocaleString()} downloads
+    </span>
+  );
+}
+
 const INSTALL_STEPS = [
   "Unzip the downloaded file.",
   'Open your browser\'s extensions page (chrome://extensions, edge://extensions, or brave://extensions) and enable "Developer mode".',
@@ -691,12 +712,19 @@ function InstallExtensionCard({ latestVersion }: { latestVersion: string | null 
         </div>
       </CardHeader>
       <CardContent className="flex flex-col gap-4">
-        <a href="/applywise-extension.zip" download className="w-fit">
-          <Button>
-            <Download size={16} />
-            Download extension{latestVersion ? ` v${latestVersion}` : ""} (.zip)
-          </Button>
-        </a>
+        <div className="flex flex-wrap items-center gap-3">
+          <a
+            href={latestVersion ? extensionReleaseDownloadUrl(latestVersion) : "/applywise-extension.zip"}
+            download
+            className="w-fit"
+          >
+            <Button>
+              <Download size={16} />
+              Download extension{latestVersion ? ` v${latestVersion}` : ""} (.zip)
+            </Button>
+          </a>
+          <DownloadCountBadge />
+        </div>
         <ol className="flex flex-col gap-1.5 text-sm text-[var(--fg-dim)]">
           {INSTALL_STEPS.map((step, i) => (
             <li key={step} className="flex gap-2">
@@ -757,17 +785,20 @@ function UpdateAvailableCard({
       </CardHeader>
       <CardContent className="flex flex-col gap-4">
         <div>
-          <a href="/applywise-extension.zip" download className="w-fit">
-            <Button className="relative isolate overflow-hidden">
-              <span
-                aria-hidden="true"
-                className="update-shine pointer-events-none absolute -inset-y-1/2 left-[-40%] -z-10 w-[30%] bg-gradient-to-r from-transparent via-white/70 to-transparent"
-                style={{ animation: "update-shine 3s ease-in-out infinite" }}
-              />
-              <Download size={16} />
-              Download v{latestVersion} (.zip)
-            </Button>
-          </a>
+          <div className="flex flex-wrap items-center gap-3">
+            <a href={extensionReleaseDownloadUrl(latestVersion)} download className="w-fit">
+              <Button className="relative isolate overflow-hidden">
+                <span
+                  aria-hidden="true"
+                  className="update-shine pointer-events-none absolute -inset-y-1/2 left-[-40%] -z-10 w-[30%] bg-gradient-to-r from-transparent via-white/70 to-transparent"
+                  style={{ animation: "update-shine 3s ease-in-out infinite" }}
+                />
+                <Download size={16} />
+                Download v{latestVersion} (.zip)
+              </Button>
+            </a>
+            <DownloadCountBadge />
+          </div>
           <p className="mt-3 text-xs text-[var(--fg-dim)]">
             After unzipping, reload it at your browser's extensions page (
             <code>chrome://extensions</code>) using the reload icon on the Applywise card, or
