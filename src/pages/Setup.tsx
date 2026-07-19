@@ -28,7 +28,7 @@ import { extractTextFromPdf } from "@/lib/pdf";
 import { getItem, setItem, STORAGE_KEYS } from "@/lib/storage";
 import { cn } from "@/lib/utils";
 import { useExtensionVersion } from "@/hooks/useExtensionVersion";
-import { useModelCatalog, isModelLive } from "@/hooks/useModelCatalog";
+import { useModelCatalog, isModelLive, getModelExpiry } from "@/hooks/useModelCatalog";
 import { useChangelog } from "@/hooks/useChangelog";
 import { useDownloadCount } from "@/hooks/useDownloadCount";
 import { compareVersions } from "@/lib/version";
@@ -366,6 +366,18 @@ function relativeTime(ts: number): string {
   return `${Math.round(hours / 24)}d ago`;
 }
 
+/** "2026-07-21" -> "Jul 21, 2026" — parsed as UTC midnight so the date shown
+ * never shifts a day depending on the reader's timezone. */
+function formatExpiryDate(iso: string): string {
+  const date = new Date(`${iso}T00:00:00Z`);
+  return date.toLocaleDateString(undefined, {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+    timeZone: "UTC",
+  });
+}
+
 /**
  * Model dropdown with (1) multiple custom model IDs per provider and (2) a
  * real-time availability check: each provider's live /models list is fetched
@@ -405,8 +417,15 @@ function ModelPicker({
   // <select> can display it as the current value.
   const isOrphanCustom = model.length > 0 && !presetValues.has(model) && !customModels.includes(model);
 
-  const retiredMarker = (value: string) =>
-    isModelLive(value, liveModels) === false ? " · ⚠ not in live list" : "";
+  // Two independent warnings a model can carry: gone already (not in the
+  // live list at all) or still live today but scheduled to disappear (the
+  // provider publishes a retirement date — currently only OpenRouter does).
+  // The first is strictly worse, so it wins when a model somehow has both.
+  const statusMarker = (value: string) => {
+    if (isModelLive(value, liveModels) === false) return " · ⚠ not in live list";
+    const expiresAt = getModelExpiry(value, liveModels);
+    return expiresAt ? ` · ⚠ going away ${formatExpiryDate(expiresAt)}` : "";
+  };
 
   function commitAdd() {
     const trimmed = draft.trim();
@@ -432,21 +451,21 @@ function ModelPicker({
         {presets.map((m) => (
           <option key={m.value} value={m.value}>
             {m.label}
-            {retiredMarker(m.value)}
+            {statusMarker(m.value)}
           </option>
         ))}
         {customModels.length > 0 && (
           <optgroup label="Your custom models">
             {customModels.map((c) => (
               <option key={c} value={c}>
-                {c} (custom){retiredMarker(c)}
+                {c} (custom){statusMarker(c)}
               </option>
             ))}
           </optgroup>
         )}
         {isOrphanCustom && (
           <option value={model}>
-            {model} (custom){retiredMarker(model)}
+            {model} (custom){statusMarker(model)}
           </option>
         )}
         <option value={ADD_CUSTOM_SENTINEL}>＋ Add a custom model…</option>
@@ -504,7 +523,7 @@ function ModelPicker({
               key={c}
               className="inline-flex max-w-full items-center gap-1 rounded-full border border-[var(--border)] py-1 pl-2.5 pr-1 text-xs"
             >
-              {isModelLive(c, liveModels) === false && (
+              {(isModelLive(c, liveModels) === false || getModelExpiry(c, liveModels) !== null) && (
                 <AlertTriangle size={11} className="shrink-0 text-[var(--status-warn-text)]" />
               )}
               <span className="truncate font-medium">{c}</span>
@@ -528,6 +547,7 @@ function ModelPicker({
         error={error}
         checkedAt={checkedAt}
         selectedLive={isModelLive(model, liveModels)}
+        expiresAt={getModelExpiry(model, liveModels)}
         model={model}
       />
     </div>
@@ -544,6 +564,7 @@ function ModelCheckStatus({
   error,
   checkedAt,
   selectedLive,
+  expiresAt,
   model,
 }: {
   providerLabel: string;
@@ -552,6 +573,8 @@ function ModelCheckStatus({
   error: string | null;
   checkedAt: number | null;
   selectedLive: boolean | null;
+  /** Retirement date for the selected model, if the provider publishes one (see getModelExpiry). */
+  expiresAt: string | null;
   model: string;
 }) {
   if (!hasKey) {
@@ -586,6 +609,25 @@ function ModelCheckStatus({
         <span>
           "{model}" isn't in {providerLabel}'s current model list — it may have been retired or
           renamed. Pick another model, or update the ID if the provider changed it.
+        </span>
+      </p>
+    );
+  }
+  // Still live today, but the provider has published a date it'll stop
+  // serving this model (currently only OpenRouter does this — see
+  // getModelExpiry). Shown instead of the plain "Verified live" line below,
+  // not alongside it: "works, but…" is a clearer single message than a green
+  // line and an amber one back to back for the same model.
+  if (selectedLive === true && expiresAt != null) {
+    return (
+      <p
+        className="flex items-start gap-1.5 rounded-lg px-2.5 py-2 text-xs font-medium"
+        style={{ color: "var(--status-warn-text)", backgroundColor: "var(--status-warn-bg)" }}
+      >
+        <AlertTriangle size={13} className="mt-0.5 shrink-0" />
+        <span>
+          "{model}" works today, but {providerLabel} will stop serving it on{" "}
+          {formatExpiryDate(expiresAt)}. Switch to another model before then.
         </span>
       </p>
     );

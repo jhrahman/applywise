@@ -1,4 +1,5 @@
 import type { AiProvider, JobEntry, JobPosting } from "./types";
+import type { LiveModel } from "./ai/list-models";
 
 export type ExtensionMessage =
   | { type: "GET_RESUMES" }
@@ -7,7 +8,7 @@ export type ExtensionMessage =
   | { type: "LIST_MODELS"; provider: AiProvider };
 
 export type ListModelsResponse =
-  | { ok: true; models: string[] }
+  | { ok: true; models: LiveModel[] }
   | { ok: false; error: string };
 
 export interface GetResumesResponse {
