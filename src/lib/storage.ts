@@ -56,9 +56,11 @@ export const STORAGE_KEYS = {
   theme: "applywise:theme",
   jobHistory: "applywise:jobHistory",
   // Cache of each provider's live model list (see Setup's real-time model
-  // check), keyed by provider with a fetch timestamp so it can expire. Bumped
-  // to v2 when the cached shape grew a per-model expiresAt field — a stale v1
-  // cache holding plain string IDs would otherwise silently mismatch the new
-  // { id, expiresAt } shape until its 1h TTL passed.
-  modelCatalog: "applywise:modelCatalog:v2",
+  // check), keyed by provider with a fetch timestamp so it can expire. The
+  // version suffix is bumped whenever a stale cache would hide a just-shipped
+  // change until its 1h TTL passed: v2 added the per-model expiresAt field, v3
+  // forces one fresh fetch so a cache written by a pre-expiry extension (which
+  // never returned expiresAt) doesn't keep the "going away" flag hidden for up
+  // to an hour after the user updates to an extension that does return it.
+  modelCatalog: "applywise:modelCatalog:v3",
 } as const;
