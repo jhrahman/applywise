@@ -95,7 +95,6 @@ export const MODELS: Record<AiProvider, { label: string; value: string }[]> = {
     { label: "Command A — flagship, recommended", value: "command-a-03-2025" },
     { label: "Command R+ — strong, general purpose", value: "command-r-plus-08-2024" },
     { label: "Command R — faster", value: "command-r-08-2024" },
-    { label: "Command R7B — smallest, fastest", value: "command-r7b-12-2024" },
   ],
   // New-account trial credits (not an ongoing free tier), then pay-as-you-go.
   deepseek: [

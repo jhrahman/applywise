@@ -48,9 +48,23 @@ const STATUS_OPTIONS: { value: JobStatus; label: string }[] = [
 // theme-aware CSS custom properties (see index.css) so text stays WCAG-AA
 // readable on both dark and light surfaces, not just whichever theme was
 // eyeballed during development.
+//
+// The band is the part of the score users are meant to read first (see
+// ScoreMeter), precisely because it stays consistent when the same
+// resume+posting is scored by different AI models while the raw number does
+// not. Measured live across five providers on strong/partial/weak real cases,
+// the two structured score inputs (experienceFit, roleAlignment) agree exactly
+// model-to-model; all the spread is in requiredCoverage — models genuinely
+// judging a different fraction of requirements "met" (e.g. a partial match
+// landed 44 / 52 / 63 / 67 across models). The thresholds below are set so
+// those real cross-model clusters fall inside one band rather than straddling a
+// cutoff: the strong cluster (~71-88) is all "Strong", the partial cluster
+// (~44-67) all "Partial", the weak cluster (~15-26) all "Needs work". The
+// earlier 75/50 cutoffs sat inside those clusters, so a few points of model
+// disagreement flipped the label.
 function scoreBand(score: number): { text: string; bg: string; label: string } {
-  if (score >= 75) return { text: "var(--status-good-text)", bg: "var(--status-good-bg)", label: "Strong match" };
-  if (score >= 50) return { text: "var(--status-warn-text)", bg: "var(--status-warn-bg)", label: "Partial match" };
+  if (score >= 70) return { text: "var(--status-good-text)", bg: "var(--status-good-bg)", label: "Strong match" };
+  if (score >= 35) return { text: "var(--status-warn-text)", bg: "var(--status-warn-bg)", label: "Partial match" };
   return { text: "var(--status-bad-text)", bg: "var(--status-bad-bg)", label: "Needs work" };
 }
 
@@ -234,38 +248,40 @@ function ScoreMeter({ score }: { score: number }) {
   const shown = useCountUp(clamped, { delay: REVEAL.score, duration: SCORE_COUNT_MS });
 
   return (
-    <div className="flex flex-col gap-4 xs:flex-row xs:items-center xs:gap-5">
-      <div className="flex items-baseline gap-1">
-        <span
-          // tabular-nums keeps every digit the same width, so a number counting
-          // up to 100 doesn't jitter its own layout on each frame.
-          className="text-4xl font-bold tracking-tight tabular-nums sm:text-5xl"
-          style={{ color: band.text }}
-        >
-          {shown}
-        </span>
-        <span className="text-lg font-semibold text-[var(--fg-dim)]">/100</span>
-      </div>
-      <div className="min-w-0 flex-1">
-        <div className="mb-1.5 flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
-          <span className="text-xs font-semibold uppercase tracking-wide text-[var(--fg-dim)]">Match score</span>
-          <span className="text-xs font-semibold" style={{ color: band.text }}>
+    <div className="flex flex-col gap-3">
+      <div className="flex items-end justify-between gap-3">
+        <div className="min-w-0">
+          <span className="text-xs font-semibold uppercase tracking-wide text-[var(--fg-dim)]">Match</span>
+          {/* The qualitative band is the hero, not the number. Verified live,
+              the same resume+posting scored by different AI models produces the
+              same band but a number that varies (models judge requirement
+              coverage differently — an irreducible judgment difference, not a
+              bug). Leading with the band gives a read that's consistent across
+              providers; the exact figure stays as a small secondary detail for
+              anyone who wants it, rather than being the dominant, jittery digit. */}
+          <div className="text-2xl font-bold leading-tight tracking-tight sm:text-3xl" style={{ color: band.text }}>
             {band.label}
-          </span>
+          </div>
         </div>
-        {/* The bar is driven off the same counted value as the digits rather
-            than a CSS transition of its own — two clocks would visibly drift. */}
-        <div
-          className="h-2.5 overflow-hidden rounded-full"
-          style={{ background: band.bg }}
-          role="progressbar"
-          aria-valuenow={clamped}
-          aria-valuemin={0}
-          aria-valuemax={100}
-          aria-label={`Match score: ${clamped} out of 100 — ${band.label}`}
-        >
-          <div className="h-full rounded-full" style={{ width: `${shown}%`, background: band.text }} />
+        <div className="flex shrink-0 items-baseline gap-0.5">
+          {/* tabular-nums keeps every digit the same width, so the count-up
+              doesn't jitter its own layout on each frame. */}
+          <span className="text-xl font-semibold tabular-nums" style={{ color: band.text }}>{shown}</span>
+          <span className="text-xs font-semibold text-[var(--fg-dim)]">/100</span>
         </div>
+      </div>
+      {/* The bar is driven off the same counted value as the digits rather
+          than a CSS transition of its own — two clocks would visibly drift. */}
+      <div
+        className="h-2.5 overflow-hidden rounded-full"
+        style={{ background: band.bg }}
+        role="progressbar"
+        aria-valuenow={clamped}
+        aria-valuemin={0}
+        aria-valuemax={100}
+        aria-label={`Match: ${band.label} (${clamped} out of 100)`}
+      >
+        <div className="h-full rounded-full" style={{ width: `${shown}%`, background: band.text }} />
       </div>
     </div>
   );
@@ -356,7 +372,11 @@ function HighlightedNote({ text, terms }: { text: string; terms: string[] }) {
         seg.emphasize ? (
           <mark
             key={i}
-            className="rounded-[3px] bg-accent-1/15 px-0.5 font-semibold text-[var(--fg)]"
+            className="rounded-[3px] px-1 font-semibold ring-1 ring-inset ring-[var(--highlight-ring)]"
+            style={{
+              backgroundColor: "var(--highlight-bg)",
+              color: "var(--highlight-text)",
+            }}
           >
             {seg.text}
           </mark>
@@ -931,7 +951,14 @@ function SessionHistory({
                       <span className="truncate font-medium">{e.job.title}</span>
                       <span className="truncate text-xs text-[var(--fg-dim)]">{e.job.company}</span>
                     </span>
-                    <span className="shrink-0 text-xs font-semibold text-accent-1">
+                    {/* Coloured by the same band as the results hero, so the
+                        quick-glance signal in the list matches the one on the
+                        page — and stays consistent across models even when the
+                        raw number drifts a few points. */}
+                    <span
+                      className="shrink-0 text-xs font-semibold tabular-nums"
+                      style={{ color: scoreBand(e.analysis.matchScore).text }}
+                    >
                       {e.analysis.matchScore}%
                     </span>
                   </a>

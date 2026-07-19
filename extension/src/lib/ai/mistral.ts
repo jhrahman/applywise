@@ -19,6 +19,12 @@ export function createMistralClient(apiKey: string, model: string): AiClient {
     model,
     providerName: "Mistral",
     thoroughMatchPrompt: lite,
+    // NB: structured output (useJsonSchema) was tried here to pin the scratchpad
+    // the way it did for Cohere, but reverted — verified live, Mistral's
+    // constrained decoding returned atsNotes as an array of objects instead of
+    // strings (failing the parse on 2 of 3 runs of one case) and did not
+    // converge the score. Prompt-only is erratic but doesn't crash, which for a
+    // last-resort lite model is the safer trade.
     maxTokens: isReasoning ? 8192 : undefined,
   });
 }
