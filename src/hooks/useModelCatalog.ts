@@ -25,6 +25,46 @@ export interface ModelCatalogState {
 }
 
 /**
+ * Tolerates an OLDER installed extension's LIST_MODELS answer — a plain
+ * `string[]`, the shape before this file's LiveModel `{ id, expiresAt? }`
+ * shipped. "Load unpacked" extensions never auto-update, so a user can keep
+ * running an old extension build for a long time against a web app that
+ * redeploys the moment this code merges — verified live, this exact mismatch
+ * threw `Cannot read properties of undefined (reading 'replace')` inside
+ * findLiveModel below and blanked the whole Setup page, since React has no
+ * error boundary around it. Any entry that isn't a string or a `{id}` object
+ * is silently dropped rather than thrown on — a missing model in the
+ * availability check is a much smaller failure than a blank page.
+ */
+function normalizeLiveModels(raw: unknown): LiveModel[] {
+  if (!Array.isArray(raw)) return [];
+  const out: LiveModel[] = [];
+  for (const item of raw) {
+    if (typeof item === "string") {
+      out.push({ id: item });
+      continue;
+    }
+    if (item && typeof item === "object" && typeof (item as { id?: unknown }).id === "string") {
+      const rec = item as { id: string; expiresAt?: unknown };
+      out.push(typeof rec.expiresAt === "string" ? { id: rec.id, expiresAt: rec.expiresAt } : { id: rec.id });
+    }
+  }
+  return out;
+}
+
+/** Same tolerance as normalizeLiveModels, applied to every provider's cached
+ * entry — a cache written by an old extension/web-app pairing needs the same
+ * guard as a fresh fetch does. */
+function normalizeCatalog(raw: ModelCatalog): ModelCatalog {
+  const out: ModelCatalog = {};
+  for (const [provider, entry] of Object.entries(raw) as [AiProvider, CatalogEntry | undefined][]) {
+    if (!entry || typeof entry.fetchedAt !== "number") continue;
+    out[provider] = { fetchedAt: entry.fetchedAt, models: normalizeLiveModels(entry.models) };
+  }
+  return out;
+}
+
+/**
  * Keeps a per-provider cache of the provider's live model catalogue so the
  * Setup page can flag retired models in real time. The actual fetch runs in the
  * extension's background worker (see bridgeListModels) because the page can't
@@ -47,7 +87,7 @@ export function useModelCatalog(
 
   useEffect(() => {
     getItem<ModelCatalog>(STORAGE_KEYS.modelCatalog, {}).then((c) => {
-      setCatalog(c);
+      setCatalog(normalizeCatalog(c));
       setCacheLoaded(true);
     });
   }, []);
@@ -68,7 +108,7 @@ export function useModelCatalog(
           if (!cancelled) setError("Model availability check needs the browser extension installed.");
           return;
         }
-        const models = await bridgeListModels(provider);
+        const models = normalizeLiveModels(await bridgeListModels(provider));
         if (cancelled) return;
         setCatalog((prev) => {
           const next: ModelCatalog = { ...prev, [provider]: { fetchedAt: Date.now(), models } };
